@@ -73,6 +73,8 @@ class KimikoDesktopGhost:
         )
         self.minecraft_listener_thread: threading.Thread | None = None
         self.minecraft_listener_stop = threading.Event()
+        self.minecraft_last_reaction_ts = 0.0
+        self.minecraft_reaction_cooldown = float(os.environ.get("KIMIKO_MINECRAFT_REACTION_COOLDOWN", "1.2"))
 
         self.last_interaction_ts = time.time()
         self.sleep_timeout_seconds = 45
@@ -322,31 +324,51 @@ class KimikoDesktopGhost:
                 query = urlparse.urlencode({"after_id": self.minecraft_last_event_id})
                 with urlrequest.urlopen(f"{self.minecraft_poll_url}?{query}", timeout=3) as response:
                     payload = json.loads(response.read().decode("utf-8"))
-                for event in payload.get("events", []):
-                    self.minecraft_last_event_id = max(self.minecraft_last_event_id, int(event.get("id", 0)))
-                    self._process_minecraft_event(event)
+                new_events = payload.get("events", [])
+                if new_events:
+                    for event in new_events:
+                        self.minecraft_last_event_id = max(self.minecraft_last_event_id, int(event.get("id", 0)))
+                    self._process_minecraft_events(new_events)
             except (urlerror.URLError, TimeoutError, ValueError, json.JSONDecodeError, OSError):
                 pass
             self.minecraft_listener_stop.wait(self.minecraft_poll_interval)
 
-    def _process_minecraft_event(self, event: dict) -> None:
-        text = str(event.get("text", "")).strip()
-        if not text:
+    def _process_minecraft_events(self, events: list[dict]) -> None:
+        latest_event_text = ""
+        should_alert_night = False
+
+        for event in events:
+            text = str(event.get("text", "")).strip()
+            if not text:
+                continue
+            latest_event_text = text
+            self.core.add_memory(f"[Minecraft] {text}")
+            if event.get("kind") == "night_start":
+                should_alert_night = True
+
+        if not latest_event_text:
             return
 
-        self.core.add_memory(f"[Minecraft] {text}")
-
-        if event.get("kind") == "night_start" and "worried" in self.image_pairs:
+        if should_alert_night and "worried" in self.image_pairs:
             self.active_expression = "worried"
             self.root.after(0, self._draw_character)
 
-        if self.core.get_current_mode() == "minecraft":
-            prompt = (
-                f"Minecraft world update: {text}\n"
-                "Reply in 1-3 short, playful sentences with quick actionable advice. "
-                "Use vague terms like food instead of specific item names when uncertain."
-            )
-            threading.Thread(target=self._queue_minecraft_reaction, args=(prompt,), daemon=True).start()
+        if self.core.get_current_mode() != "minecraft":
+            return
+
+        now = time.time()
+        if now - self.minecraft_last_reaction_ts < self.minecraft_reaction_cooldown:
+            return
+
+        self.minecraft_last_reaction_ts = now
+        prompt = (
+            f"Minecraft world update: {latest_event_text}\n"
+            "Return exactly one natural in-character reply. "
+            "Keep it 1-3 short sentences, playful and concise. "
+            "Do not output raw state or debug wording. "
+            "Use vague umbrella terms like food when uncertain."
+        )
+        threading.Thread(target=self._queue_minecraft_reaction, args=(prompt,), daemon=True).start()
 
     def _queue_minecraft_reaction(self, prompt: str) -> None:
         reply = self.core.send(prompt)

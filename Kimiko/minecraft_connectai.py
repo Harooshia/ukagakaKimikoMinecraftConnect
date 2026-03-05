@@ -80,21 +80,6 @@ class MinecraftEventService:
         return False
 
     @staticmethod
-    def describe_player_state(packet: dict[str, Any]) -> str:
-        states: list[str] = []
-        if packet.get("elytra_flying"):
-            states.append("flying with an elytra")
-        if packet.get("underwater"):
-            states.append("underwater")
-        if packet.get("passenger"):
-            states.append("riding an entity")
-        if packet.get("on_ground"):
-            states.append("standing on the ground")
-        if not states:
-            return ""
-        return "The player is currently " + ", ".join(states) + "."
-
-    @staticmethod
     def packet_signature(packet: dict[str, Any]) -> tuple[Any, ...]:
         keys = (
             "biome",
@@ -110,6 +95,7 @@ class MinecraftEventService:
             "health",
             "food",
             "reason",
+            "message",
         )
         return tuple(packet.get(key) for key in keys)
 
@@ -124,106 +110,78 @@ class MinecraftEventService:
         self.recent_events.append(event)
         return event
 
-    def build_context(self, packet: dict[str, Any]) -> str:
-        biome = self.clean_biome(packet.get("biome"))
-        dimension = self.clean_dimension(packet.get("dimension"))
-        daytime = int(packet.get("daytime", 0) or 0)
-        weather = self.describe_weather(packet.get("is_raining"), packet.get("is_thundering"))
-        time_desc = self.describe_time(daytime)
-        player_state = self.describe_player_state(packet)
+    def build_companion_event_text(
+        self,
+        packet: dict[str, Any],
+        *,
+        biome_changed: bool,
+        night_started: bool,
+    ) -> str:
+        cues: list[str] = []
 
-        context = (
-            "Minecraft Environment\n"
-            f"Dimension: {dimension}\n"
-            f"Biome: {biome}\n"
-            f"Time: {time_desc}\n"
-            f"Weather: {weather}\n"
-            f"Players online: {packet.get('players_online')}\n"
-        )
-
-        if player_state:
-            context += f"\n{player_state}\n"
-
-        reason = packet.get("reason")
-        if reason == "chat":
-            context += (
-                f"\nThe player said:\n\"{packet.get('message')}\"\n"
-                "Respond naturally as the AI companion.\n"
-            )
-        elif reason == "low_health":
-            context += (
-                "\nThe player's health is critically low.\n"
-                f"Health: {packet.get('health')}\n"
-                "Offer advice or concern.\n"
-            )
-        elif reason == "low_food":
-            context += (
-                "\nThe player is getting hungry.\n"
-                f"Food level: {packet.get('food')}\n"
-                "Suggest eating food.\n"
-            )
-
-        return context.strip()
-
-    def build_companion_event_text(self, packet: dict[str, Any]) -> str:
-        biome = self.clean_biome(packet.get("biome"))
-        time_desc = self.describe_time(int(packet.get("daytime", 0) or 0))
-        weather = self.describe_weather(packet.get("is_raining"), packet.get("is_thundering"))
-        parts = [f"Biome {biome}", f"time {time_desc}", f"weather {weather}"]
+        if biome_changed:
+            cues.append(f"entered {self.clean_biome(packet.get('biome'))}")
+        if night_started:
+            cues.append("night just started")
 
         health = packet.get("health")
         food = packet.get("food")
         if isinstance(health, (int, float)) and health <= 6:
-            parts.append(f"health is low ({health})")
+            cues.append("player is hurt")
         if isinstance(food, (int, float)) and food <= 6:
-            parts.append(f"hunger is low ({food})")
+            cues.append("player is hungry")
 
         if packet.get("underwater"):
-            parts.append("player is underwater")
+            cues.append("player is underwater")
         if packet.get("elytra_flying"):
-            parts.append("player is flying")
+            cues.append("player is flying")
 
         reason = packet.get("reason")
         if reason == "chat" and packet.get("message"):
-            parts.append(f'player said "{packet.get("message")}"')
+            cues.append(f'player said "{packet.get("message")}"')
         elif reason == "low_health":
-            parts.append("player took heavy damage")
+            cues.append("player took heavy damage")
         elif reason == "low_food":
-            parts.append("player needs food soon")
+            cues.append("player needs food")
         elif reason == "death":
-            parts.append("player died")
+            cues.append("player died")
 
-        summary = ", ".join(parts)
+        if not cues:
+            cues.append("world state changed")
+
         return (
-            "Minecraft status update: "
-            f"{summary}. "
-            "Reply as Kimiko in 1-3 short, fun sentences. "
-            "Be reactive, casual, and quick. "
-            "Use vague terms for resources (say food, not specific items)."
+            "Minecraft companion update. "
+            f"Event cues: {', '.join(cues)}. "
+            "Reply with exactly one natural response in 1-3 short sentences. "
+            "Be playful, casual, and supportive. "
+            "Do not output raw state, JSON, debug text, or telemetry labels. "
+            "Use vague umbrella words when uncertain (say food, not specific item names)."
         )
 
     def build_event_updates(self, packet: dict[str, Any]) -> list[tuple[str, str]]:
-        updates: list[tuple[str, str]] = []
         biome = packet.get("biome")
         daytime = int(packet.get("daytime", 0) or 0)
-
-        if self.detect_biome_change(biome):
-            updates.append(("biome_change", f"You just entered a new biome: {self.clean_biome(biome)}."))
-
-        if self.detect_night_start(daytime):
-            updates.append(
-                (
-                    "night_start",
-                    "Night has just begun in Minecraft. Hostile mobs may start spawning, so stay alert.",
-                )
-            )
+        biome_changed = self.detect_biome_change(biome)
+        night_started = self.detect_night_start(daytime)
 
         signature = self.packet_signature(packet)
-        if signature != self.last_packet_signature:
-            self.last_packet_signature = signature
-            updates.append(("state_update", self.build_companion_event_text(packet)))
+        changed = signature != self.last_packet_signature
+        self.last_packet_signature = signature
 
-        return updates
+        if not changed and not biome_changed and not night_started:
+            return []
+
+        event_kind = "night_start" if night_started else "companion_update"
+        return [
+            (
+                event_kind,
+                self.build_companion_event_text(
+                    packet,
+                    biome_changed=biome_changed,
+                    night_started=night_started,
+                ),
+            )
+        ]
 
 
 def create_app(service: MinecraftEventService | None = None) -> Flask:
@@ -235,7 +193,7 @@ def create_app(service: MinecraftEventService | None = None) -> Flask:
         packet = request.json or {}
         updates = service.build_event_updates(packet)
         events = [service.add_event(kind, text) for kind, text in updates]
-        response_text = updates[-1][1] if updates else "No significant change detected."
+        response_text = events[-1]["text"] if events else "No significant change detected."
         return jsonify({"status": "ok", "response": response_text, "events": events})
 
     @app.route("/events/recent", methods=["GET"])
@@ -266,7 +224,6 @@ class MinecraftEventServer:
     def start(self) -> None:
         if self.is_running():
             return
-
         self.service.reset()
         self._http_server = make_server(self.host, self.port, self.app)
         self._thread = threading.Thread(target=self._http_server.serve_forever, daemon=True)
