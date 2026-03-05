@@ -341,7 +341,11 @@ class KimikoDesktopGhost:
             self.root.after(0, self._draw_character)
 
         if self.core.get_current_mode() == "minecraft":
-            prompt = f"Minecraft world update: {text}\nRespond naturally in Minecraft mode."
+            prompt = (
+                f"Minecraft world update: {text}\n"
+                "Reply in 1-3 short, playful sentences with quick actionable advice. "
+                "Use vague terms like food instead of specific item names when uncertain."
+            )
             threading.Thread(target=self._queue_minecraft_reaction, args=(prompt,), daemon=True).start()
 
     def _queue_minecraft_reaction(self, prompt: str) -> None:
