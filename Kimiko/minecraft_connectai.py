@@ -165,6 +165,43 @@ class MinecraftEventService:
 
         return context.strip()
 
+    def build_companion_event_text(self, packet: dict[str, Any]) -> str:
+        biome = self.clean_biome(packet.get("biome"))
+        time_desc = self.describe_time(int(packet.get("daytime", 0) or 0))
+        weather = self.describe_weather(packet.get("is_raining"), packet.get("is_thundering"))
+        parts = [f"Biome {biome}", f"time {time_desc}", f"weather {weather}"]
+
+        health = packet.get("health")
+        food = packet.get("food")
+        if isinstance(health, (int, float)) and health <= 6:
+            parts.append(f"health is low ({health})")
+        if isinstance(food, (int, float)) and food <= 6:
+            parts.append(f"hunger is low ({food})")
+
+        if packet.get("underwater"):
+            parts.append("player is underwater")
+        if packet.get("elytra_flying"):
+            parts.append("player is flying")
+
+        reason = packet.get("reason")
+        if reason == "chat" and packet.get("message"):
+            parts.append(f'player said "{packet.get("message")}"')
+        elif reason == "low_health":
+            parts.append("player took heavy damage")
+        elif reason == "low_food":
+            parts.append("player needs food soon")
+        elif reason == "death":
+            parts.append("player died")
+
+        summary = ", ".join(parts)
+        return (
+            "Minecraft status update: "
+            f"{summary}. "
+            "Reply as Kimiko in 1-3 short, fun sentences. "
+            "Be reactive, casual, and quick. "
+            "Use vague terms for resources (say food, not specific items)."
+        )
+
     def build_event_updates(self, packet: dict[str, Any]) -> list[tuple[str, str]]:
         updates: list[tuple[str, str]] = []
         biome = packet.get("biome")
@@ -184,7 +221,7 @@ class MinecraftEventService:
         signature = self.packet_signature(packet)
         if signature != self.last_packet_signature:
             self.last_packet_signature = signature
-            updates.append(("state_update", self.build_context(packet)))
+            updates.append(("state_update", self.build_companion_event_text(packet)))
 
         return updates
 
