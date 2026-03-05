@@ -12,10 +12,16 @@ Features:
 from __future__ import annotations
 
 from pathlib import Path
+import json
+import os
 import queue
 import threading
 import time
 import tkinter as tk
+
+from urllib import error as urlerror
+from urllib import parse as urlparse
+from urllib import request as urlrequest
 
 from kimiko_core import KimikoCore
 
@@ -64,6 +70,10 @@ class KimikoDesktopGhost:
 
         self.response_queue: queue.Queue[str] = queue.Queue()
 
+        self.minecraft_poll_url = os.environ.get("KIMIKO_MINECRAFT_EVENTS_URL", "http://localhost:5001/events/recent")
+        self.minecraft_poll_interval = float(os.environ.get("KIMIKO_MINECRAFT_POLL_INTERVAL", "2.0"))
+        self.minecraft_last_event_id = 0
+
         self.last_interaction_ts = time.time()
         self.sleep_timeout_seconds = 45
         self.is_sleeping = False
@@ -90,6 +100,8 @@ class KimikoDesktopGhost:
         self._setup_bindings()
         self._create_bubble()
         self._draw_character()
+
+        self._start_minecraft_event_listener()
 
         self.root.after(90, self._poll_queue)
         self.root.after(140, self._talk_tick)
@@ -203,6 +215,8 @@ class KimikoDesktopGhost:
     def _select_idle_expression(self) -> str:
         if self.is_sleeping and "worried" in self.image_pairs:
             return "worried"
+        if self.core.get_current_mode() == "minecraft" and "nervous" in self.image_pairs:
+            return "nervous"
         if "happy" in self.image_pairs:
             return "happy"
         return self._pick_default_expression()
@@ -238,7 +252,7 @@ class KimikoDesktopGhost:
         self.menu.add_separator()
 
         mode_menu = tk.Menu(self.menu, tearoff=0, bg="#f4f3ff", fg="#29254a", activebackground="#dcd8ff")
-        for mode in ("companion", "work", "therapy"):
+        for mode in ("companion", "work", "therapy", "minecraft"):
             mode_menu.add_command(label=f"Mode: {mode.title()}", command=lambda m=mode: self._set_mode(m))
         self.menu.add_cascade(label="Mode", menu=mode_menu)
 
@@ -319,6 +333,42 @@ class KimikoDesktopGhost:
         self.dialog_text.configure(state="disabled")
 
     # ---------------- state helpers ----------------
+    def _start_minecraft_event_listener(self) -> None:
+        threading.Thread(target=self._poll_minecraft_events_loop, daemon=True).start()
+
+    def _poll_minecraft_events_loop(self) -> None:
+        while True:
+            try:
+                query = urlparse.urlencode({"after_id": self.minecraft_last_event_id})
+                with urlrequest.urlopen(f"{self.minecraft_poll_url}?{query}", timeout=3) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                for event in payload.get("events", []):
+                    self.minecraft_last_event_id = max(self.minecraft_last_event_id, int(event.get("id", 0)))
+                    self._process_minecraft_event(event)
+            except (urlerror.URLError, TimeoutError, ValueError, json.JSONDecodeError, OSError):
+                pass
+            time.sleep(self.minecraft_poll_interval)
+
+    def _process_minecraft_event(self, event: dict) -> None:
+        text = str(event.get("text", "")).strip()
+        if not text:
+            return
+
+        self.core.add_memory(f"[Minecraft] {text}")
+
+        event_kind = str(event.get("kind", ""))
+        if event_kind == "night_start" and "worried" in self.image_pairs:
+            self.active_expression = "worried"
+            self.root.after(0, self._draw_character)
+
+        if self.core.get_current_mode() == "minecraft":
+            reaction_prompt = f"Minecraft world update: {text}\nReact in-character as Kimiko in Minecraft mode."
+            threading.Thread(target=self._queue_minecraft_reaction, args=(reaction_prompt,), daemon=True).start()
+
+    def _queue_minecraft_reaction(self, prompt: str) -> None:
+        reply = self.core.send(prompt)
+        self.response_queue.put(reply)
+
     def _register_activity(self) -> None:
         self.last_interaction_ts = time.time()
         if self.is_sleeping:
@@ -510,6 +560,8 @@ class KimikoDesktopGhost:
 
         if self.is_bubble_open:
             self.bubble.geometry(self.bubble_position())
+
+        self._start_minecraft_event_listener()
 
         self.root.after(90, self._poll_queue)
 

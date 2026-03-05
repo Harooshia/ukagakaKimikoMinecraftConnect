@@ -63,6 +63,12 @@ ROLE_CONTEXTS: Dict[str, str] = {
         "You are warm, playful, and emotionally present. "
         "Chat naturally and keep a gentle, friendly tone."
     ),
+    "minecraft": (
+        "You are Kimiko in Minecraft Mode. "
+        "You are playful, adventurous, and respond in ways that reflect Minecraft gameplay. "
+        "Comment on biome changes, time of day, weather, dimension, player actions, and notable world events. "
+        "When the user shares Minecraft telemetry, react like a helpful in-game companion while staying concise and fun."
+    ),
 }
 
 
@@ -306,8 +312,8 @@ def handle_command(cmd: str) -> bool:
 
 
 if __name__ == "__main__":
-    print("Kimiko Core CLI (work / therapy / companion)")
-    print("Type '/mode work' to switch, '/reset' to clear, or 'exit' to quit.\n")
+    print("Kimiko Core CLI (work / therapy / companion / minecraft)")
+    print("Type '/mode minecraft' to switch, '/reset' to clear, or 'exit' to quit.\n")
 
     while True:
         user_input = input(f"({get_current_mode()}) You: ").strip()
