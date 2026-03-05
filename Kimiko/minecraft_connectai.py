@@ -1,3 +1,6 @@
+from collections import deque
+import time
+
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -8,6 +11,10 @@ app = Flask(__name__)
 
 last_biome = None
 last_is_night = False
+last_packet_signature = None
+
+recent_events = deque(maxlen=200)
+event_counter = 0
 
 # =========================
 # HELPER FUNCTIONS
@@ -17,6 +24,10 @@ def clean_biome(biome):
     if biome is None:
         return "Unknown"
     return biome.replace("minecraft:", "").replace("_", " ").title()
+
+
+def describe_biome(biome):
+    return clean_biome(biome)
 
 
 def clean_dimension(dim):
@@ -110,6 +121,66 @@ def describe_player_state(packet):
         return ""
 
     return "The player is currently " + ", ".join(states) + "."
+
+
+def packet_signature(packet):
+    keys = [
+        "biome",
+        "dimension",
+        "daytime",
+        "is_raining",
+        "is_thundering",
+        "elytra_flying",
+        "underwater",
+        "passenger",
+        "on_ground",
+        "players_online",
+        "health",
+        "food",
+        "reason",
+    ]
+    return tuple(packet.get(key) for key in keys)
+
+
+def add_event(kind, text):
+    global event_counter
+
+    event_counter += 1
+    recent_events.append(
+        {
+            "id": event_counter,
+            "kind": kind,
+            "text": text.strip(),
+            "timestamp": time.time(),
+        }
+    )
+
+
+def build_event_updates(packet):
+    global last_packet_signature
+
+    updates = []
+
+    biome = packet.get("biome")
+    daytime = packet.get("daytime", 0)
+
+    if detect_biome_change(biome):
+        updates.append(("biome_change", f"You just entered a new biome: {clean_biome(biome)}."))
+
+    if detect_night_start(daytime):
+        updates.append(
+            (
+                "night_start",
+                "Night has just begun in Minecraft. Hostile mobs may start spawning, so stay alert.",
+            )
+        )
+
+    signature = packet_signature(packet)
+    if signature != last_packet_signature:
+        last_packet_signature = signature
+        updates.append(("state_update", build_context(packet)))
+
+    return updates
 
 
 # =========================
@@ -215,39 +286,27 @@ def send_to_ai(prompt):
 
 @app.route("/logs", methods=["POST"])
 def logs():
+    packet = request.json or {}
+    updates = build_event_updates(packet)
 
-    packet = request.json
+    for kind, text in updates:
+        add_event(kind, text)
+        send_to_ai(text)
 
-    biome = packet.get("biome")
-    daytime = packet.get("daytime", 0)
-
-    # Detect events
-
-    if detect_biome_change(biome):
-
-        prompt = f"""
-The player just entered a new biome: {clean_biome(biome)}.
-"""
-        send_to_ai(prompt)
-
-    if detect_night_start(daytime):
-
-        prompt = """
-Night has just begun in Minecraft.
-Hostile mobs may start spawning.
-"""
-        send_to_ai(prompt)
-
-    # Normal packet handling
-
-    prompt = build_context(packet)
-
-    response = send_to_ai(prompt)
+    response = updates[-1][1] if updates else "No significant change detected."
 
     return jsonify({
         "status": "ok",
-        "response": response
+        "response": response,
+        "events": [event for event in list(recent_events)[-len(updates):]],
     })
+
+
+@app.route("/events/recent", methods=["GET"])
+def events_recent():
+    after_id = request.args.get("after_id", default=0, type=int)
+    events = [event for event in recent_events if int(event.get("id", 0)) > after_id]
+    return jsonify({"status": "ok", "events": events})
 
 
 # =========================
