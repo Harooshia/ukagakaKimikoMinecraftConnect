@@ -1,260 +1,247 @@
-from flask import Flask, request, jsonify
+from __future__ import annotations
 
-app = Flask(__name__)
+from collections import deque
+from dataclasses import dataclass, field
+import threading
+import time
+from typing import Any
 
-# =========================
-# STATE MEMORY
-# =========================
-
-last_biome = None
-last_is_night = False
-
-# =========================
-# HELPER FUNCTIONS
-# =========================
-
-def clean_biome(biome):
-    if biome is None:
-        return "Unknown"
-    return biome.replace("minecraft:", "").replace("_", " ").title()
+from flask import Flask, jsonify, request
+from werkzeug.serving import make_server
 
 
-def clean_dimension(dim):
-    if dim is None:
-        return "Unknown"
-    return dim.replace("minecraft:", "").title()
+@dataclass
+class MinecraftEventService:
+    last_biome: str | None = None
+    last_is_night: bool = False
+    last_packet_signature: tuple[Any, ...] | None = None
+    recent_events: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=200))
+    event_counter: int = 0
 
+    def reset(self) -> None:
+        self.last_biome = None
+        self.last_is_night = False
+        self.last_packet_signature = None
+        self.recent_events.clear()
+        self.event_counter = 0
 
-def describe_time(tick):
+    @staticmethod
+    def clean_biome(biome: str | None) -> str:
+        if biome is None:
+            return "Unknown"
+        return biome.replace("minecraft:", "").replace("_", " ").title()
 
-    if tick < 2000:
-        return "sunrise"
+    @staticmethod
+    def clean_dimension(dim: str | None) -> str:
+        if dim is None:
+            return "Unknown"
+        return dim.replace("minecraft:", "").title()
 
-    if tick < 6000:
-        return "morning"
+    @staticmethod
+    def describe_time(tick: int) -> str:
+        if tick < 2000:
+            return "sunrise"
+        if tick < 6000:
+            return "morning"
+        if tick < 12000:
+            return "afternoon"
+        if tick < 13000:
+            return "sunset"
+        if tick < 18000:
+            return "night"
+        if tick < 22000:
+            return "late night"
+        return "approaching sunrise"
 
-    if tick < 12000:
-        return "afternoon"
+    @staticmethod
+    def describe_weather(rain: bool | None, thunder: bool | None) -> str:
+        if thunder:
+            return "a thunderstorm"
+        if rain:
+            return "rain"
+        return "clear weather"
 
-    if tick < 13000:
-        return "sunset"
-
-    if tick < 18000:
-        return "night"
-
-    if tick < 22000:
-        return "late night"
-
-    return "approaching sunrise"
-
-
-def describe_weather(rain, thunder):
-
-    if thunder:
-        return "a thunderstorm"
-
-    if rain:
-        return "rain"
-
-    return "clear weather"
-
-
-def detect_night_start(daytime):
-
-    global last_is_night
-
-    now = daytime >= 13000
-
-    if now and not last_is_night:
-        last_is_night = True
-        return True
-
-    if not now:
-        last_is_night = False
-
-    return False
-
-
-def detect_biome_change(biome):
-
-    global last_biome
-
-    if last_biome is None:
-        last_biome = biome
+    def detect_night_start(self, daytime: int) -> bool:
+        now_is_night = daytime >= 13000
+        if now_is_night and not self.last_is_night:
+            self.last_is_night = True
+            return True
+        if not now_is_night:
+            self.last_is_night = False
         return False
 
-    if biome != last_biome:
-        last_biome = biome
-        return True
+    def detect_biome_change(self, biome: str | None) -> bool:
+        if self.last_biome is None:
+            self.last_biome = biome
+            return False
+        if biome != self.last_biome:
+            self.last_biome = biome
+            return True
+        return False
 
-    return False
+    @staticmethod
+    def packet_signature(packet: dict[str, Any]) -> tuple[Any, ...]:
+        keys = (
+            "biome",
+            "dimension",
+            "daytime",
+            "is_raining",
+            "is_thundering",
+            "elytra_flying",
+            "underwater",
+            "passenger",
+            "on_ground",
+            "players_online",
+            "health",
+            "food",
+            "reason",
+            "message",
+        )
+        return tuple(packet.get(key) for key in keys)
 
+    def add_event(self, kind: str, text: str) -> dict[str, Any]:
+        self.event_counter += 1
+        event = {
+            "id": self.event_counter,
+            "kind": kind,
+            "text": (text or "").strip(),
+            "timestamp": time.time(),
+        }
+        self.recent_events.append(event)
+        return event
 
-def describe_player_state(packet):
+    def build_companion_event_text(
+        self,
+        packet: dict[str, Any],
+        *,
+        biome_changed: bool,
+        night_started: bool,
+    ) -> str:
+        cues: list[str] = []
 
-    states = []
+        if biome_changed:
+            cues.append(f"entered {self.clean_biome(packet.get('biome'))}")
+        if night_started:
+            cues.append("night just started")
 
-    if packet.get("elytra_flying"):
-        states.append("flying with an elytra")
+        health = packet.get("health")
+        food = packet.get("food")
+        if isinstance(health, (int, float)) and health <= 6:
+            cues.append("player is hurt")
+        if isinstance(food, (int, float)) and food <= 6:
+            cues.append("player is hungry")
 
-    if packet.get("underwater"):
-        states.append("underwater")
+        if packet.get("underwater"):
+            cues.append("player is underwater")
+        if packet.get("elytra_flying"):
+            cues.append("player is flying")
 
-    if packet.get("passenger"):
-        states.append("riding an entity")
+        reason = packet.get("reason")
+        if reason == "chat" and packet.get("message"):
+            cues.append(f'player said "{packet.get("message")}"')
+        elif reason == "low_health":
+            cues.append("player took heavy damage")
+        elif reason == "low_food":
+            cues.append("player needs food")
+        elif reason == "death":
+            cues.append("player died")
 
-    if packet.get("on_ground"):
-        states.append("standing on the ground")
+        if not cues:
+            cues.append("world state changed")
 
-    if len(states) == 0:
-        return ""
+        return (
+            "Minecraft world context. "
+            f"Current cues: {', '.join(cues)}."
+        )
 
-    return "The player is currently " + ", ".join(states) + "."
+    def build_event_updates(self, packet: dict[str, Any]) -> list[tuple[str, str]]:
+        biome = packet.get("biome")
+        daytime = int(packet.get("daytime", 0) or 0)
+        biome_changed = self.detect_biome_change(biome)
+        night_started = self.detect_night_start(daytime)
 
+        signature = self.packet_signature(packet)
+        changed = signature != self.last_packet_signature
+        self.last_packet_signature = signature
 
-# =========================
-# CONTEXT BUILDER
-# =========================
+        if not changed and not biome_changed and not night_started:
+            return []
 
-def build_context(packet):
-
-    biome = clean_biome(packet.get("biome"))
-    dimension = clean_dimension(packet.get("dimension"))
-
-    daytime = packet.get("daytime", 0)
-
-    weather = describe_weather(
-        packet.get("is_raining"),
-        packet.get("is_thundering")
-    )
-
-    time_desc = describe_time(daytime)
-
-    player_state = describe_player_state(packet)
-
-    context = f"""
-Minecraft Environment
-Dimension: {dimension}
-Biome: {biome}
-Time: {time_desc}
-Weather: {weather}
-Players online: {packet.get("players_online")}
-"""
-
-    if player_state:
-        context += "\n" + player_state + "\n"
-
-    reason = packet.get("reason")
-
-    # =========================
-    # CHAT
-    # =========================
-
-    if reason == "chat":
-
-        context += f"""
-
-The player said:
-"{packet.get("message")}"
-
-Respond naturally as the AI companion.
-"""
-
-    # =========================
-    # LOW HEALTH
-    # =========================
-
-    elif reason == "low_health":
-
-        context += f"""
-
-The player's health is critically low.
-
-Health: {packet.get("health")}
-
-Offer advice or concern.
-"""
-
-    # =========================
-    # LOW FOOD
-    # =========================
-
-    elif reason == "low_food":
-
-        context += f"""
-
-The player is getting hungry.
-
-Food level: {packet.get("food")}
-
-Suggest eating food.
-"""
-
-    return context.strip()
-
-
-# =========================
-# AI CALL (stub)
-# =========================
-
-def send_to_ai(prompt):
-
-    print("\n================ AI PROMPT ================\n")
-    print(prompt)
-    print("\n==========================================\n")
-
-    # Replace this with your KimikoCore call
-    # response = kimiko.send(prompt)
-
-    return "..."
+        event_kind = "night_start" if night_started else "companion_update"
+        return [
+            (
+                event_kind,
+                self.build_companion_event_text(
+                    packet,
+                    biome_changed=biome_changed,
+                    night_started=night_started,
+                ),
+            )
+        ]
 
 
-# =========================
-# MAIN ENDPOINT
-# =========================
+def create_app(service: MinecraftEventService | None = None) -> Flask:
+    service = service or MinecraftEventService()
+    app = Flask(__name__)
 
-@app.route("/logs", methods=["POST"])
-def logs():
+    @app.route("/logs", methods=["POST"])
+    def logs():
+        packet = request.json or {}
+        updates = service.build_event_updates(packet)
+        events = [service.add_event(kind, text) for kind, text in updates]
+        response_text = events[-1]["text"] if events else "No significant change detected."
+        return jsonify({"status": "ok", "response": response_text, "events": events})
 
-    packet = request.json
+    @app.route("/events/recent", methods=["GET"])
+    def events_recent():
+        after_id = request.args.get("after_id", default=0, type=int)
+        events = [event for event in service.recent_events if int(event.get("id", 0)) > after_id]
+        return jsonify({"status": "ok", "events": events})
 
-    biome = packet.get("biome")
-    daytime = packet.get("daytime", 0)
+    @app.route("/health", methods=["GET"])
+    def health():
+        return jsonify({"status": "ok"})
 
-    # Detect events
-
-    if detect_biome_change(biome):
-
-        prompt = f"""
-The player just entered a new biome: {clean_biome(biome)}.
-"""
-        send_to_ai(prompt)
-
-    if detect_night_start(daytime):
-
-        prompt = """
-Night has just begun in Minecraft.
-Hostile mobs may start spawning.
-"""
-        send_to_ai(prompt)
-
-    # Normal packet handling
-
-    prompt = build_context(packet)
-
-    response = send_to_ai(prompt)
-
-    return jsonify({
-        "status": "ok",
-        "response": response
-    })
+    return app
 
 
-# =========================
-# START SERVER
-# =========================
+class MinecraftEventServer:
+    def __init__(self, host: str = "127.0.0.1", port: int = 5001) -> None:
+        self.host = host
+        self.port = port
+        self.service = MinecraftEventService()
+        self.app = create_app(self.service)
+        self._thread: threading.Thread | None = None
+        self._http_server = None
+
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def start(self) -> None:
+        if self.is_running():
+            return
+        self.service.reset()
+        self._http_server = make_server(self.host, self.port, self.app)
+        self._thread = threading.Thread(target=self._http_server.serve_forever, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if self._http_server is not None:
+            self._http_server.shutdown()
+            self._http_server.server_close()
+            self._http_server = None
+
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+            self._thread = None
+
 
 if __name__ == "__main__":
-
+    server = MinecraftEventServer(host="0.0.0.0", port=5001)
     print("Minecraft AI Companion server running...")
-    app.run(port=5001)
+    server.start()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        server.stop()
