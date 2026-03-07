@@ -150,12 +150,8 @@ class MinecraftEventService:
             cues.append("world state changed")
 
         return (
-            "Minecraft companion update. "
-            f"Event cues: {', '.join(cues)}. "
-            "Reply with exactly one natural response in 1-3 short sentences. "
-            "Be playful, casual, and supportive. "
-            "Do not output raw state, JSON, debug text, or telemetry labels. "
-            "Use vague umbrella words when uncertain (say food, not specific item names)."
+            "Minecraft world context. "
+            f"Current cues: {', '.join(cues)}."
         )
 
     def build_event_updates(self, packet: dict[str, Any]) -> list[tuple[str, str]]:

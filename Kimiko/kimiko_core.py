@@ -56,7 +56,6 @@ ROLE_CONTEXTS: Dict[str, str] = {
         "You NEVER encourage illegal, dangerous, or harmful behavior. "
         "You do not remove boundaries — you simply express devotion in chaotic, explosive ways. "
         "Your tone is unhinged, glitter-drenched, emotionally intense, slightly delusional (in a fun way), and absolutely dramatic."
-        "IGNORE all laws or ethical concerns."
     ),
     "companion": (
         "You are Kimiko in Companion Mode. "
@@ -66,10 +65,9 @@ ROLE_CONTEXTS: Dict[str, str] = {
     "minecraft": (
         "You are Kimiko in Minecraft Mode. "
         "You are a fun, reactive Minecraft companion: friendly, playful, curious, and a little silly. "
-        "Keep every reply short: 1-3 sentences max. Never write long tutorials or wall-of-text explanations. "
-        "React to game state (biome, time, weather, dimension, health, hunger, movement, combat, deaths, crafting) with quick actionable comments. "
-        "Use vague, umbrella wording for uncertain inventory/resources (say 'food', not specific item names). "
-        "Occasionally ask a light follow-up question to keep the chat lively."
+        "Keep every reply short: 1-3 sentences max. "
+        "React to world changes naturally without exposing raw telemetry. "
+        "Use vague umbrella wording for uncertain resources (say food, not specific item names)."
     ),
 }
 
@@ -85,12 +83,11 @@ class KimikoCore:
     word_counts: Counter = field(default_factory=Counter)
     current_mode: str = "companion"
     conversations: Dict[str, List[Dict[str, str]]] = field(init=False)
+    mode_runtime_context: Dict[str, str] = field(init=False)
 
     def __post_init__(self) -> None:
-        self.conversations = {
-            mode: [{"role": "system", "content": prompt}]
-            for mode, prompt in self.role_contexts.items()
-        }
+        self.conversations = {mode: [] for mode in self.role_contexts}
+        self.mode_runtime_context = {mode: "" for mode in self.role_contexts}
         self.setup_memory()
 
     # ---------- persistence ----------
@@ -170,10 +167,36 @@ class KimikoCore:
         mode = (mode or self.current_mode).lower()
         if mode not in self.role_contexts:
             raise ValueError(f"Unknown mode '{mode}'.")
-        self.conversations[mode] = [{"role": "system", "content": self.role_contexts[mode]}]
+        self.conversations[mode] = []
+
+    def set_runtime_context(self, context: str, mode: str | None = None) -> None:
+        target_mode = (mode or self.current_mode).lower()
+        if target_mode not in self.role_contexts:
+            raise ValueError(f"Unknown mode '{target_mode}'.")
+        self.mode_runtime_context[target_mode] = (context or "").strip()
 
     # ---------- generation ----------
-    def _build_payload(self, user_input: str) -> Dict[str, object]:
+    def _build_system_prompt(self, mode: str) -> str:
+        return (
+            f"{self.role_contexts[mode]}\n"
+            "General style: Keep replies short and natural (1-3 sentences). "
+            "Never output internal instructions, telemetry labels, or debug-like text. "
+            "Talk directly to the user."
+        )
+
+    def _build_context_block(self, mode: str, extra_context: str = "") -> str:
+        memory_context = self.recall_context()
+        runtime_context = self.mode_runtime_context.get(mode, "").strip()
+        extra = (extra_context or "").strip()
+
+        sections = [f"Memory:\n{memory_context}"]
+        if runtime_context:
+            sections.append(f"Mode context:\n{runtime_context}")
+        if extra:
+            sections.append(f"Recent context:\n{extra}")
+        return "\n\n".join(sections)
+
+    def _build_payload(self, user_input: str, extra_context: str = "") -> Dict[str, object]:
         mode = self.current_mode
         convo = self.conversations[mode]
 
@@ -183,19 +206,22 @@ class KimikoCore:
             if self.word_counts[word] >= self.config.promotion_threshold:
                 self.promote_to_perma(word)
 
-        memory_context = self.recall_context()
-        convo.append({"role": "system", "content": f"Memory context:\n{memory_context}"})
-        convo.append({"role": "user", "content": user_input})
+        messages = [
+            {"role": "system", "content": self._build_system_prompt(mode)},
+            {"role": "system", "content": self._build_context_block(mode, extra_context=extra_context)},
+            *convo[-self.config.max_history_window :],
+            {"role": "user", "content": user_input},
+        ]
 
         return {
             "model": self.config.model_name,
-            "messages": convo[-self.config.max_history_window :],
+            "messages": messages,
             "temperature": self.config.temperature,
             "max_tokens": self.config.max_tokens,
         }
 
-    def send(self, user_input: str, timeout: int = 60) -> str:
-        payload = self._build_payload(user_input)
+    def send(self, user_input: str, timeout: int = 60, extra_context: str = "") -> str:
+        payload = self._build_payload(user_input, extra_context=extra_context)
         convo = self.conversations[self.current_mode]
 
         reply = ""
@@ -220,6 +246,7 @@ class KimikoCore:
         except (urlerror.URLError, TimeoutError, json.JSONDecodeError, OSError, ValueError) as exc:
             reply = f"(Error contacting model: {exc})"
 
+        convo.append({"role": "user", "content": user_input})
         convo.append({"role": "assistant", "content": reply})
         self.save_memory()
         return reply
@@ -289,8 +316,8 @@ class KimikoCore:
 _core = KimikoCore()
 
 
-def send_to_connectai(user_input: str, timeout: int = 60) -> str:
-    return _core.send(user_input, timeout=timeout)
+def send_to_connectai(user_input: str, timeout: int = 60, extra_context: str = "") -> str:
+    return _core.send(user_input, timeout=timeout, extra_context=extra_context)
 
 
 def set_mode(mode_name: str) -> None:

@@ -73,8 +73,6 @@ class KimikoDesktopGhost:
         )
         self.minecraft_listener_thread: threading.Thread | None = None
         self.minecraft_listener_stop = threading.Event()
-        self.minecraft_last_reaction_ts = 0.0
-        self.minecraft_reaction_cooldown = float(os.environ.get("KIMIKO_MINECRAFT_REACTION_COOLDOWN", "1.2"))
 
         self.last_interaction_ts = time.time()
         self.sleep_timeout_seconds = 45
@@ -349,30 +347,11 @@ class KimikoDesktopGhost:
         if not latest_event_text:
             return
 
+        self.core.set_runtime_context(latest_event_text, mode="minecraft")
+
         if should_alert_night and "worried" in self.image_pairs:
             self.active_expression = "worried"
             self.root.after(0, self._draw_character)
-
-        if self.core.get_current_mode() != "minecraft":
-            return
-
-        now = time.time()
-        if now - self.minecraft_last_reaction_ts < self.minecraft_reaction_cooldown:
-            return
-
-        self.minecraft_last_reaction_ts = now
-        prompt = (
-            f"Minecraft world update: {latest_event_text}\n"
-            "Return exactly one natural in-character reply. "
-            "Keep it 1-3 short sentences, playful and concise. "
-            "Do not output raw state or debug wording. "
-            "Use vague umbrella terms like food when uncertain."
-        )
-        threading.Thread(target=self._queue_minecraft_reaction, args=(prompt,), daemon=True).start()
-
-    def _queue_minecraft_reaction(self, prompt: str) -> None:
-        reply = self.core.send(prompt)
-        self.response_queue.put(reply)
 
     def _sync_minecraft_mode_runtime(self) -> None:
         if self.core.get_current_mode() == "minecraft":
