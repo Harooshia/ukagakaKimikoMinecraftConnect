@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 import os
 import queue
+import re
 import threading
 import time
 import tkinter as tk
@@ -331,6 +332,11 @@ class KimikoDesktopGhost:
                 pass
             self.minecraft_listener_stop.wait(self.minecraft_poll_interval)
 
+    @staticmethod
+    def _extract_player_chat_from_context(context_text: str) -> str:
+        match = re.search(r'player said "([^"]+)"', context_text)
+        return match.group(1).strip() if match else ""
+
     def _process_minecraft_events(self, events: list[dict]) -> None:
         latest_event_text = ""
         should_alert_night = False
@@ -352,6 +358,21 @@ class KimikoDesktopGhost:
         if should_alert_night and "worried" in self.image_pairs:
             self.active_expression = "worried"
             self.root.after(0, self._draw_character)
+
+        if self.core.get_current_mode() != "minecraft":
+            return
+
+        player_chat = self._extract_player_chat_from_context(latest_event_text)
+        user_input = player_chat or "Any updates for me?"
+        threading.Thread(
+            target=self._queue_minecraft_reaction,
+            args=(user_input, latest_event_text),
+            daemon=True,
+        ).start()
+
+    def _queue_minecraft_reaction(self, user_input: str, context_text: str) -> None:
+        reply = self.core.send(user_input, extra_context=context_text)
+        self.response_queue.put(reply)
 
     def _sync_minecraft_mode_runtime(self) -> None:
         if self.core.get_current_mode() == "minecraft":
