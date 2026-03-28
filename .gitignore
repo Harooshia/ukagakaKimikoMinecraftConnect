@@ -1,0 +1,6 @@
+# Python cache artifacts
+__pycache__/
+*.pyc
+
+# Runtime web uploads
+webui/static/uploads/

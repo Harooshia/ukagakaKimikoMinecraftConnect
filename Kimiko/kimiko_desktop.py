@@ -10,19 +10,73 @@ import re
 import threading
 import time
 import tkinter as tk
+import sys
 
 from urllib import error as urlerror
 from urllib import parse as urlparse
 from urllib import request as urlrequest
 
-from kimiko_core import KimikoCore
-from minecraft_connectai import MinecraftEventServer
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+try:
+    from .kimiko_core import KimikoCore
+    from .minecraft_connectai import MinecraftEventServer
+except ImportError:
+    from kimiko_core import KimikoCore
+    from minecraft_connectai import MinecraftEventServer
+
+try:
+    from werkzeug.serving import make_server
+except ImportError:
+    make_server = None
+
+try:
+    from webui.app import app as webui_flask_app
+except Exception:
+    webui_flask_app = None
+
+try:
+    from webui.settings_manager import speak as settings_speak
+except Exception:
+    def settings_speak(_text: str) -> None:
+        return
 
 try:
     from PIL import Image, ImageTk
 except ImportError:
     Image = None
     ImageTk = None
+
+
+class SettingsWebServer:
+    """Background Flask runner so settings UI auto-starts with desktop app."""
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 5000) -> None:
+        self.host = host
+        self.port = port
+        self._server = None
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if self._thread or make_server is None or webui_flask_app is None:
+            return
+
+        try:
+            self._server = make_server(self.host, self.port, webui_flask_app)
+        except OSError:
+            return
+
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if self._server is not None:
+            self._server.shutdown()
+            self._server.server_close()
+        self._server = None
+        self._thread = None
 
 
 class KimikoDesktopGhost:
@@ -62,6 +116,9 @@ class KimikoDesktopGhost:
         self.drag_start_pos = (0, 0)
 
         self.response_queue: queue.Queue[str] = queue.Queue()
+
+        self.settings_web_server = SettingsWebServer()
+        self.settings_web_server.start()
 
         self.minecraft_server_host = os.environ.get("KIMIKO_MINECRAFT_SERVER_HOST", "127.0.0.1")
         self.minecraft_server_port = int(os.environ.get("KIMIKO_MINECRAFT_SERVER_PORT", "5001"))
@@ -223,14 +280,18 @@ class KimikoDesktopGhost:
         self.menu.add_command(label="Dock / Undock", command=self.toggle_dock)
         self.menu.add_separator()
 
-        mode_menu = tk.Menu(self.menu, tearoff=0, bg="#f4f3ff", fg="#29254a", activebackground="#dcd8ff")
-        for mode in ("companion", "work", "therapy", "minecraft"):
-            mode_menu.add_command(label=f"Mode: {mode.title()}", command=lambda m=mode: self._set_mode(m))
-        self.menu.add_cascade(label="Mode", menu=mode_menu)
+        self.mode_menu = tk.Menu(self.menu, tearoff=0, bg="#f4f3ff", fg="#29254a", activebackground="#dcd8ff")
+        self.menu.add_cascade(label="Mode", menu=self.mode_menu)
+        self._reload_mode_menu()
 
         self.menu.add_separator()
         self.menu.add_command(label="Reset Conversation", command=self._reset_conversation)
         self.menu.add_command(label="Quit", command=self._shutdown_application)
+
+    def _reload_mode_menu(self) -> None:
+        self.mode_menu.delete(0, "end")
+        for mode in self.core.get_available_modes():
+            self.mode_menu.add_command(label=f"Mode: {mode.title()}", command=lambda m=mode: self._set_mode(m))
 
     def _setup_bindings(self) -> None:
         self.canvas.bind("<Enter>", self.on_hover_enter)
@@ -514,6 +575,7 @@ class KimikoDesktopGhost:
 
     def on_right_click(self, event) -> None:
         self._register_activity()
+        self._reload_mode_menu()
         try:
             self.menu.tk_popup(event.x_root, event.y_root)
         finally:
@@ -525,6 +587,7 @@ class KimikoDesktopGhost:
 
     def on_dock_right_click(self, event) -> None:
         self._register_activity()
+        self._reload_mode_menu()
         try:
             self.menu.tk_popup(event.x_root, event.y_root)
         finally:
@@ -552,9 +615,17 @@ class KimikoDesktopGhost:
     def _get_reply(self, text: str) -> None:
         self.response_queue.put(self.core.send(text))
 
+    def _speak_async(self, text: str) -> None:
+        def run() -> None:
+            settings_speak(text)
+
+        threading.Thread(target=run, daemon=True).start()
+
     def _poll_queue(self) -> None:
         while not self.response_queue.empty():
-            self._set_dialog_text(self.response_queue.get())
+            reply = self.response_queue.get()
+            self._set_dialog_text(reply)
+            self._speak_async(reply)
             self.root.after(900, self._stop_talking)
 
         if self.is_bubble_open:
@@ -620,6 +691,7 @@ class KimikoDesktopGhost:
     def _shutdown_application(self, _event=None) -> None:
         self._stop_minecraft_event_listener()
         self.minecraft_server.stop()
+        self.settings_web_server.stop()
         self.root.destroy()
 
     def run(self) -> None:

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="page-header"><h1>Model</h1><p>Configure UKAGAKA expression images.</p></header>
+
+<div class="card-grid expression-grid">
+  <article class="setting-card expr-card">
+    <h2>Happy</h2>
+    <img id="preview-happy" class="ghost-preview" alt="happy preview" />
+    <label>Image path</label>
+    <input id="path-happy" type="text" />
+    <label class="btn">Upload PNG<input class="expr-upload" data-expression="happy" type="file" accept=".png" hidden /></label>
+  </article>
+
+  <article class="setting-card expr-card">
+    <h2>Nervous</h2>
+    <img id="preview-nervous" class="ghost-preview" alt="nervous preview" />
+    <label>Image path</label>
+    <input id="path-nervous" type="text" />
+    <label class="btn">Upload PNG<input class="expr-upload" data-expression="nervous" type="file" accept=".png" hidden /></label>
+  </article>
+
+  <article class="setting-card expr-card">
+    <h2>Worried</h2>
+    <img id="preview-worried" class="ghost-preview" alt="worried preview" />
+    <label>Image path</label>
+    <input id="path-worried" type="text" />
+    <label class="btn">Upload PNG<input class="expr-upload" data-expression="worried" type="file" accept=".png" hidden /></label>
+  </article>
+</div>
+{% endblock %}

@@ -14,12 +14,25 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 import json
 import os
+from pathlib import Path
 import re
+import sys
 import time
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from urllib import error as urlerror
 from urllib import request as urlrequest
+
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+try:
+    from webui.settings_manager import get_settings_manager
+except Exception:  # Fallback keeps legacy behavior if web UI dependencies are unavailable.
+    get_settings_manager = None
+
 
 
 @dataclass(frozen=True)
@@ -105,6 +118,7 @@ class KimikoCore:
         self.conversations = {mode: [] for mode in self.role_contexts}
         self.mode_runtime_context = {mode: "" for mode in self.role_contexts}
         self.setup_memory()
+        self.settings_manager = get_settings_manager() if get_settings_manager else None
 
     # ---------- persistence ----------
     def setup_memory(self) -> None:
@@ -171,6 +185,7 @@ class KimikoCore:
 
     # ---------- mode/state ----------
     def set_mode(self, mode_name: str) -> None:
+        self.refresh_role_contexts_from_settings()
         normalized = mode_name.lower().strip()
         if normalized not in self.conversations:
             raise ValueError(f"Invalid mode '{mode_name}'. Must be one of: {list(self.conversations.keys())}")
@@ -191,10 +206,60 @@ class KimikoCore:
             raise ValueError(f"Unknown mode '{target_mode}'.")
         self.mode_runtime_context[target_mode] = (context or "").strip()
 
+    def _get_runtime_settings(self) -> dict[str, Any]:
+        if not self.settings_manager:
+            return {}
+        try:
+            return self.settings_manager.load_settings()
+        except Exception:
+            return {}
+
+    def refresh_role_contexts_from_settings(self) -> None:
+        settings = self._get_runtime_settings()
+        modules = settings.get("modules", {}) if isinstance(settings, dict) else {}
+        configured = modules.get("consciousness", {}) if isinstance(modules, dict) else {}
+        if not isinstance(configured, dict) or not configured:
+            return
+
+        for name, prompt in configured.items():
+            key = str(name).strip().lower()
+            if not key:
+                continue
+            text = str(prompt).strip()
+            if text:
+                self.role_contexts[key] = text
+
+        # Keep global role context registry synced for integrations that read ROLE_CONTEXTS directly.
+        ROLE_CONTEXTS.clear()
+        ROLE_CONTEXTS.update(self.role_contexts)
+
+        for mode in self.role_contexts:
+            self.conversations.setdefault(mode, [])
+            self.mode_runtime_context.setdefault(mode, "")
+
+    def get_available_modes(self) -> list[str]:
+        self.refresh_role_contexts_from_settings()
+        return list(self.role_contexts.keys())
+
     # ---------- generation ----------
     def _build_system_prompt(self, mode: str) -> str:
+        self.refresh_role_contexts_from_settings()
+        settings = self._get_runtime_settings()
+        modules = settings.get("modules", {}) if isinstance(settings, dict) else {}
+
+        effective_mode = "minecraft" if modules.get("minecraft_mode") else mode
+        configured_consciousness = modules.get("consciousness", {})
+        configured_mode_context = configured_consciousness.get(effective_mode, "") if isinstance(configured_consciousness, dict) else ""
+        base_context = (configured_mode_context or self.role_contexts.get(effective_mode, self.role_contexts[mode])).strip()
+
+        consciousness_line = ""
+        if isinstance(configured_consciousness, dict) and configured_consciousness:
+            formatted = ", ".join(str(item) for item in configured_consciousness.keys() if str(item).strip())
+            if formatted:
+                consciousness_line = f"\nConfigured consciousness contexts: {formatted}."
+
         return (
-            f"{self.role_contexts[mode]}\n"
+            f"{base_context}{consciousness_line}\n"
             "General style: Keep replies short and natural (1-3 sentences). "
             "Never output internal instructions, telemetry labels, or debug-like text. "
             "Talk directly to the user."
@@ -205,7 +270,14 @@ class KimikoCore:
         runtime_context = self.mode_runtime_context.get(mode, "").strip()
         extra = (extra_context or "").strip()
 
+        settings = self._get_runtime_settings()
+        context_modules = settings.get("memory", {}).get("context_modules", []) if isinstance(settings, dict) else []
+
         sections = [f"Memory:\n{memory_context}"]
+        if context_modules:
+            module_text = ", ".join(str(item) for item in context_modules if str(item).strip())
+            if module_text:
+                sections.append(f"Configured context modules:\n{module_text}")
         if runtime_context:
             sections.append(f"Mode context:\n{runtime_context}")
         if extra:

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="page-header"><h1>Data</h1><p>Control settings import/export and reset actions.</p></header>
+
+<article class="setting-card">
+  <h2>Data Controls</h2>
+  <div class="actions">
+    <button id="exportBtn" class="btn">Export Settings</button>
+    <label class="btn">Import Settings<input id="importInput" type="file" accept="application/json" hidden /></label>
+    <button id="resetModulesBtn" class="btn">Reset Modules</button>
+  </div>
+</article>
+
+<article class="setting-card danger-card">
+  <h2>Danger Zone</h2>
+  <p>Delete all stored data and disable memory.</p>
+  <button id="deleteBtn" class="btn danger">Delete All Data</button>
+</article>
+{% endblock %}
