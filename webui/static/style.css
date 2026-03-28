@@ -13,6 +13,43 @@ body {
   font-family: Inter, "SF Pro Text", "Segoe UI", sans-serif;
   color: var(--text);
   background: #0b0f14;
+  overflow-x: hidden;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 20% 10%, rgba(100, 180, 255, 0.08), transparent 40%),
+              radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.05), transparent 50%);
+}
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: radial-gradient(rgba(255,255,255,.7) 0.5px, transparent 0.5px);
+  background-size: 4px 4px;
+}
+
+.bg-effects {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  transition: transform 0.2s ease;
+}
+.particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  animation: float 20s linear infinite;
+}
+@keyframes float {
+  from { transform: translateY(0); }
+  to { transform: translateY(-100vh); }
 }
 
 .layout {
@@ -72,7 +109,7 @@ body {
 
 .setting-card:hover {
   background: var(--card-hover);
-  transform: translateY(-2px);
+  transform: translateY(-3px) scale(1.01);
 }
 
 .setting-card h2 { margin: 0 0 6px; }

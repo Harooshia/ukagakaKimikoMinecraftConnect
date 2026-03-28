@@ -38,6 +38,12 @@ except Exception:
     webui_flask_app = None
 
 try:
+    from webui.settings_manager import speak as settings_speak
+except Exception:
+    def settings_speak(_text: str) -> None:
+        return
+
+try:
     from PIL import Image, ImageTk
 except ImportError:
     Image = None
@@ -274,14 +280,18 @@ class KimikoDesktopGhost:
         self.menu.add_command(label="Dock / Undock", command=self.toggle_dock)
         self.menu.add_separator()
 
-        mode_menu = tk.Menu(self.menu, tearoff=0, bg="#f4f3ff", fg="#29254a", activebackground="#dcd8ff")
-        for mode in ("companion", "work", "therapy", "minecraft"):
-            mode_menu.add_command(label=f"Mode: {mode.title()}", command=lambda m=mode: self._set_mode(m))
-        self.menu.add_cascade(label="Mode", menu=mode_menu)
+        self.mode_menu = tk.Menu(self.menu, tearoff=0, bg="#f4f3ff", fg="#29254a", activebackground="#dcd8ff")
+        self.menu.add_cascade(label="Mode", menu=self.mode_menu)
+        self._reload_mode_menu()
 
         self.menu.add_separator()
         self.menu.add_command(label="Reset Conversation", command=self._reset_conversation)
         self.menu.add_command(label="Quit", command=self._shutdown_application)
+
+    def _reload_mode_menu(self) -> None:
+        self.mode_menu.delete(0, "end")
+        for mode in self.core.get_available_modes():
+            self.mode_menu.add_command(label=f"Mode: {mode.title()}", command=lambda m=mode: self._set_mode(m))
 
     def _setup_bindings(self) -> None:
         self.canvas.bind("<Enter>", self.on_hover_enter)
@@ -565,6 +575,7 @@ class KimikoDesktopGhost:
 
     def on_right_click(self, event) -> None:
         self._register_activity()
+        self._reload_mode_menu()
         try:
             self.menu.tk_popup(event.x_root, event.y_root)
         finally:
@@ -576,6 +587,7 @@ class KimikoDesktopGhost:
 
     def on_dock_right_click(self, event) -> None:
         self._register_activity()
+        self._reload_mode_menu()
         try:
             self.menu.tk_popup(event.x_root, event.y_root)
         finally:
@@ -603,9 +615,17 @@ class KimikoDesktopGhost:
     def _get_reply(self, text: str) -> None:
         self.response_queue.put(self.core.send(text))
 
+    def _speak_async(self, text: str) -> None:
+        def run() -> None:
+            settings_speak(text)
+
+        threading.Thread(target=run, daemon=True).start()
+
     def _poll_queue(self) -> None:
         while not self.response_queue.empty():
-            self._set_dialog_text(self.response_queue.get())
+            reply = self.response_queue.get()
+            self._set_dialog_text(reply)
+            self._speak_async(reply)
             self.root.after(900, self._stop_talking)
 
         if self.is_bubble_open:

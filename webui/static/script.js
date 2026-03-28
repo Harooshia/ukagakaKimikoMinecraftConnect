@@ -1,3 +1,25 @@
+
+function initVisualEffects() {
+  const bg = document.getElementById("bgEffects");
+  if (!bg) return;
+
+  for (let i = 0; i < 36; i += 1) {
+    const dot = document.createElement("span");
+    dot.className = "particle";
+    dot.style.left = `${Math.random() * 100}%`;
+    dot.style.top = `${Math.random() * 100}%`;
+    dot.style.animationDelay = `${Math.random() * 20}s`;
+    dot.style.animationDuration = `${18 + Math.random() * 16}s`;
+    bg.appendChild(dot);
+  }
+
+  document.addEventListener("mousemove", (e) => {
+    const x = (e.clientX / window.innerWidth - 0.5) * 12;
+    const y = (e.clientY / window.innerHeight - 0.5) * 12;
+    bg.style.transform = `translate(${x}px, ${y}px)`;
+  });
+}
+
 const toastEl = document.getElementById("toast");
 let state = { settings: null, voices: [] };
 
@@ -229,6 +251,7 @@ async function initDataPage() {
   });
 }
 
+initVisualEffects();
 initModulesPage();
 initModelPage();
 initMemoryPage();

@@ -29,12 +29,10 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 try:
-    from webui.settings_manager import get_settings_manager, speak
+    from webui.settings_manager import get_settings_manager
 except Exception:  # Fallback keeps legacy behavior if web UI dependencies are unavailable.
     get_settings_manager = None
 
-    def speak(text: str) -> None:
-        return
 
 
 @dataclass(frozen=True)
@@ -187,6 +185,7 @@ class KimikoCore:
 
     # ---------- mode/state ----------
     def set_mode(self, mode_name: str) -> None:
+        self.refresh_role_contexts_from_settings()
         normalized = mode_name.lower().strip()
         if normalized not in self.conversations:
             raise ValueError(f"Invalid mode '{mode_name}'. Must be one of: {list(self.conversations.keys())}")
@@ -215,8 +214,36 @@ class KimikoCore:
         except Exception:
             return {}
 
+    def refresh_role_contexts_from_settings(self) -> None:
+        settings = self._get_runtime_settings()
+        modules = settings.get("modules", {}) if isinstance(settings, dict) else {}
+        configured = modules.get("consciousness", {}) if isinstance(modules, dict) else {}
+        if not isinstance(configured, dict) or not configured:
+            return
+
+        for name, prompt in configured.items():
+            key = str(name).strip().lower()
+            if not key:
+                continue
+            text = str(prompt).strip()
+            if text:
+                self.role_contexts[key] = text
+
+        # Keep global role context registry synced for integrations that read ROLE_CONTEXTS directly.
+        ROLE_CONTEXTS.clear()
+        ROLE_CONTEXTS.update(self.role_contexts)
+
+        for mode in self.role_contexts:
+            self.conversations.setdefault(mode, [])
+            self.mode_runtime_context.setdefault(mode, "")
+
+    def get_available_modes(self) -> list[str]:
+        self.refresh_role_contexts_from_settings()
+        return list(self.role_contexts.keys())
+
     # ---------- generation ----------
     def _build_system_prompt(self, mode: str) -> str:
+        self.refresh_role_contexts_from_settings()
         settings = self._get_runtime_settings()
         modules = settings.get("modules", {}) if isinstance(settings, dict) else {}
 

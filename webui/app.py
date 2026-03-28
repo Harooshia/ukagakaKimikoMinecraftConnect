@@ -27,6 +27,7 @@ app = Flask(
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 
 settings_manager = get_settings_manager()
+MEMORY_FILES = [APP_ROOT.parent / "connectai_memory.json", APP_ROOT.parent / "memory.json"]
 
 
 @app.get("/settings")
@@ -91,8 +92,24 @@ def api_upload() -> Any:
 
 @app.get("/api/export")
 def api_export() -> Any:
-    settings_manager.save_settings(settings_manager.get())
-    return send_file(SETTINGS_FILE, as_attachment=True, download_name="settings.json", mimetype="application/json")
+    settings = settings_manager.get()
+    memory_payload: dict[str, Any] = {}
+    for mem_file in MEMORY_FILES:
+        if mem_file.exists():
+            try:
+                memory_payload[mem_file.name] = json.loads(mem_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                memory_payload[mem_file.name] = {}
+
+    downloads = Path.home() / "Downloads"
+    downloads.mkdir(parents=True, exist_ok=True)
+    export_path = downloads / "kimiko_data.txt"
+    export_path.write_text(
+        json.dumps({"settings": settings, "memory": memory_payload}, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    return send_file(export_path, as_attachment=True, download_name="kimiko_data.txt", mimetype="text/plain")
 
 
 @app.post("/api/import")
@@ -126,10 +143,14 @@ def api_reset_all() -> Any:
 
 @app.post("/api/delete-data")
 def api_delete_data() -> Any:
-    settings = settings_manager.get()
-    settings["data"] = {}
-    settings["memory"] = {"enabled": False}
-    return jsonify({"ok": True, "settings": settings_manager.save_settings(settings)})
+    for mem_file in MEMORY_FILES:
+        try:
+            mem_file.write_text("{}", encoding="utf-8")
+        except OSError:
+            continue
+
+    reset = settings_manager.reset()
+    return jsonify({"ok": True, "settings": reset})
 
 
 @app.post("/api/test-voice")
