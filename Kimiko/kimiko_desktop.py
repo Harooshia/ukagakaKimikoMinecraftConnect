@@ -10,19 +10,67 @@ import re
 import threading
 import time
 import tkinter as tk
+import sys
 
 from urllib import error as urlerror
 from urllib import parse as urlparse
 from urllib import request as urlrequest
 
-from kimiko_core import KimikoCore
-from minecraft_connectai import MinecraftEventServer
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+try:
+    from .kimiko_core import KimikoCore
+    from .minecraft_connectai import MinecraftEventServer
+except ImportError:
+    from kimiko_core import KimikoCore
+    from minecraft_connectai import MinecraftEventServer
+
+try:
+    from werkzeug.serving import make_server
+except ImportError:
+    make_server = None
+
+try:
+    from webui.app import app as webui_flask_app
+except Exception:
+    webui_flask_app = None
 
 try:
     from PIL import Image, ImageTk
 except ImportError:
     Image = None
     ImageTk = None
+
+
+class SettingsWebServer:
+    """Background Flask runner so settings UI auto-starts with desktop app."""
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 5000) -> None:
+        self.host = host
+        self.port = port
+        self._server = None
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if self._thread or make_server is None or webui_flask_app is None:
+            return
+
+        try:
+            self._server = make_server(self.host, self.port, webui_flask_app)
+        except OSError:
+            return
+
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if self._server is not None:
+            self._server.shutdown()
+            self._server.server_close()
+        self._server = None
+        self._thread = None
 
 
 class KimikoDesktopGhost:
@@ -62,6 +110,9 @@ class KimikoDesktopGhost:
         self.drag_start_pos = (0, 0)
 
         self.response_queue: queue.Queue[str] = queue.Queue()
+
+        self.settings_web_server = SettingsWebServer()
+        self.settings_web_server.start()
 
         self.minecraft_server_host = os.environ.get("KIMIKO_MINECRAFT_SERVER_HOST", "127.0.0.1")
         self.minecraft_server_port = int(os.environ.get("KIMIKO_MINECRAFT_SERVER_PORT", "5001"))
@@ -620,6 +671,7 @@ class KimikoDesktopGhost:
     def _shutdown_application(self, _event=None) -> None:
         self._stop_minecraft_event_listener()
         self.minecraft_server.stop()
+        self.settings_web_server.stop()
         self.root.destroy()
 
     def run(self) -> None:
