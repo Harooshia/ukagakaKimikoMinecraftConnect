@@ -8,7 +8,8 @@ A local web settings system is now included.
 
 ```bash
 pip install -r requirements.txt
-python webui/app.py
+python -m webui.app
+# or: python webui/app.py
 ```
 
 Open: `http://localhost:5000/settings`
@@ -25,3 +26,6 @@ Open: `http://localhost:5000/settings`
 
 `Kimiko/kimiko_core.py` now reads shared settings from `webui/settings_manager.py` on each response.
 Minecraft mode, context modules, consciousness modules, and pyttsx3 voice output are applied dynamically.
+
+
+Desktop app now auto-starts the settings server on http://127.0.0.1:5000/settings when Kimiko launches.

@@ -2,40 +2,48 @@
 {% block title %}Kimiko Settings{% endblock %}
 {% block content %}
 <header class="header">
-  <h1>Kimiko Local Settings</h1>
-  <p>Runtime configuration synced instantly with the AI core.</p>
+  <h1>Settings</h1>
+  <p>Local runtime controls for Kimiko (auto-saved to settings.json).</p>
 </header>
 
-<section class="grid">
+<section class="stack">
   <article class="card">
     <h2>Modules</h2>
-    <label>Consciousness modules (comma-separated)</label>
-    <input id="consciousnessInput" type="text" placeholder="reflection, planner" />
+    <div class="two-col">
+      <div>
+        <label>Consciousness modules (comma-separated)</label>
+        <input id="consciousnessInput" type="text" placeholder="reflection, planner" />
 
-    <div class="row between">
-      <span>Speech Enabled</span>
-      <label class="switch">
-        <input id="speechEnabled" type="checkbox" />
-        <span class="slider"></span>
-      </label>
-    </div>
+        <div class="row between">
+          <span>Speech Enabled</span>
+          <label class="switch">
+            <input id="speechEnabled" type="checkbox" />
+            <span class="slider"></span>
+          </label>
+        </div>
 
-    <label>Speech Voice</label>
-    <select id="voiceSelect"></select>
-    <button id="testVoiceBtn" class="btn subtle">Test Voice</button>
+        <label>Speech Voice</label>
+        <select id="voiceSelect"></select>
+        <button id="testVoiceBtn" class="btn subtle">Test Voice</button>
+      </div>
 
-    <div class="row between">
-      <span>Minecraft mode</span>
-      <label class="switch">
-        <input id="minecraftMode" type="checkbox" />
-        <span class="slider"></span>
-      </label>
+      <div>
+        <div class="row between">
+          <span>Minecraft mode</span>
+          <label class="switch">
+            <input id="minecraftMode" type="checkbox" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <label>Context modules (comma-separated)</label>
+        <input id="memoryInput" type="text" placeholder="persona, timeline" />
+      </div>
     </div>
   </article>
 
   <article class="card">
-    <h2>Model</h2>
-    <p>Ghost avatar</p>
+    <h2>Model (Ghost)</h2>
     <img id="ghostPreview" class="ghost-preview" alt="Current ghost" />
     <div id="ghostGrid" class="ghost-grid"></div>
     <label class="upload">
@@ -45,9 +53,19 @@
   </article>
 
   <article class="card">
-    <h2>Memory</h2>
-    <label>Context modules (comma-separated)</label>
-    <input id="memoryInput" type="text" placeholder="persona, timeline" />
+    <h2>Role Contexts</h2>
+    <p>Edit the default mode prompts below. These are used by KimikoCore at runtime.</p>
+    <div class="role-grid">
+      <label>Work</label>
+      <textarea id="roleWork" rows="4"></textarea>
+      <label>Therapy</label>
+      <textarea id="roleTherapy" rows="6"></textarea>
+      <label>Companion</label>
+      <textarea id="roleCompanion" rows="4"></textarea>
+      <label>Minecraft</label>
+      <textarea id="roleMinecraft" rows="7"></textarea>
+    </div>
+    <button id="saveRolesBtn" class="btn">Save Role Contexts</button>
   </article>
 
   <article class="card">

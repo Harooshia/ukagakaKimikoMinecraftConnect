@@ -11,7 +11,10 @@ from werkzeug.utils import secure_filename
 try:
     from .settings_manager import GHOSTS_DIR, SETTINGS_FILE, UPLOADS_DIR, get_settings_manager, list_voices, speak
 except ImportError:
-    from webui.settings_manager import GHOSTS_DIR, SETTINGS_FILE, UPLOADS_DIR, get_settings_manager, list_voices, speak
+    try:
+        from webui.settings_manager import GHOSTS_DIR, SETTINGS_FILE, UPLOADS_DIR, get_settings_manager, list_voices, speak
+    except ImportError:
+        from settings_manager import GHOSTS_DIR, SETTINGS_FILE, UPLOADS_DIR, get_settings_manager, list_voices, speak
 
 APP_ROOT = Path(__file__).resolve().parent
 

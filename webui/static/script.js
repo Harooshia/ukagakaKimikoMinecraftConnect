@@ -12,6 +12,11 @@ const el = {
   testVoiceBtn: document.getElementById("testVoiceBtn"),
   minecraftMode: document.getElementById("minecraftMode"),
   memoryInput: document.getElementById("memoryInput"),
+  roleWork: document.getElementById("roleWork"),
+  roleTherapy: document.getElementById("roleTherapy"),
+  roleCompanion: document.getElementById("roleCompanion"),
+  roleMinecraft: document.getElementById("roleMinecraft"),
+  saveRolesBtn: document.getElementById("saveRolesBtn"),
   ghostPreview: document.getElementById("ghostPreview"),
   ghostGrid: document.getElementById("ghostGrid"),
   ghostUpload: document.getElementById("ghostUpload"),
@@ -79,6 +84,11 @@ function render() {
   el.speechEnabled.checked = !!state.settings.modules.speech.enabled;
   el.minecraftMode.checked = !!state.settings.modules.minecraft_mode;
   el.memoryInput.value = state.settings.memory.context_modules.join(", ");
+  const rc = state.settings.role_contexts || {};
+  el.roleWork.value = rc.work || "";
+  el.roleTherapy.value = rc.therapy || "";
+  el.roleCompanion.value = rc.companion || "";
+  el.roleMinecraft.value = rc.minecraft || "";
   renderVoices();
   renderGhosts();
 }
@@ -120,6 +130,18 @@ function bindEvents() {
   );
   el.memoryInput.addEventListener("change", () =>
     saveSettings({ memory: { context_modules: toList(el.memoryInput.value) } })
+  );
+
+
+  el.saveRolesBtn.addEventListener("click", () =>
+    saveSettings({
+      role_contexts: {
+        work: el.roleWork.value,
+        therapy: el.roleTherapy.value,
+        companion: el.roleCompanion.value,
+        minecraft: el.roleMinecraft.value,
+      },
+    })
   );
 
   el.testVoiceBtn.addEventListener("click", async () => {
