@@ -1,0 +1,19 @@
+{
+  "modules": {
+    "consciousness": [],
+    "speech": {
+      "voice": "default",
+      "enabled": true
+    },
+    "minecraft_mode": false
+  },
+  "model": {
+    "ghost_image": "default.svg"
+  },
+  "memory": {
+    "context_modules": []
+  },
+  "data": {
+    "stored": true
+  }
+}
