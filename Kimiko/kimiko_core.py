@@ -221,16 +221,15 @@ class KimikoCore:
         modules = settings.get("modules", {}) if isinstance(settings, dict) else {}
 
         effective_mode = "minecraft" if modules.get("minecraft_mode") else mode
-        configured_role_contexts = settings.get("role_contexts", {}) if isinstance(settings, dict) else {}
-        configured_mode_context = configured_role_contexts.get(effective_mode, "") if isinstance(configured_role_contexts, dict) else ""
+        configured_consciousness = modules.get("consciousness", {})
+        configured_mode_context = configured_consciousness.get(effective_mode, "") if isinstance(configured_consciousness, dict) else ""
         base_context = (configured_mode_context or self.role_contexts.get(effective_mode, self.role_contexts[mode])).strip()
 
-        consciousness_modules = modules.get("consciousness", [])
         consciousness_line = ""
-        if consciousness_modules:
-            formatted = ", ".join(str(item) for item in consciousness_modules if str(item).strip())
+        if isinstance(configured_consciousness, dict) and configured_consciousness:
+            formatted = ", ".join(str(item) for item in configured_consciousness.keys() if str(item).strip())
             if formatted:
-                consciousness_line = f"\nEnabled consciousness modules: {formatted}."
+                consciousness_line = f"\nConfigured consciousness contexts: {formatted}."
 
         return (
             f"{base_context}{consciousness_line}\n"
