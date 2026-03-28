@@ -80,8 +80,14 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     },
     "model": {
         "ghost_image": "default.svg",
+        "images": {
+            "happy": "default.svg",
+            "nervous": "nervous.svg",
+            "worried": "worried.svg",
+        },
     },
     "memory": {
+        "enabled": True,
         "context_modules": [],
     },
     "data": {

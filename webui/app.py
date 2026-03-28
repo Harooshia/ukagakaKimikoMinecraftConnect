@@ -4,17 +4,42 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import json
 
 from flask import Flask, jsonify, render_template, request, send_file
 from werkzeug.utils import secure_filename
 
 try:
-    from .settings_manager import GHOSTS_DIR, SETTINGS_FILE, UPLOADS_DIR, get_settings_manager, list_voices, speak
+    from .settings_manager import (
+        DEFAULT_ROLE_CONTEXTS,
+        GHOSTS_DIR,
+        SETTINGS_FILE,
+        UPLOADS_DIR,
+        get_settings_manager,
+        list_voices,
+        speak,
+    )
 except ImportError:
     try:
-        from webui.settings_manager import GHOSTS_DIR, SETTINGS_FILE, UPLOADS_DIR, get_settings_manager, list_voices, speak
+        from webui.settings_manager import (
+            DEFAULT_ROLE_CONTEXTS,
+            GHOSTS_DIR,
+            SETTINGS_FILE,
+            UPLOADS_DIR,
+            get_settings_manager,
+            list_voices,
+            speak,
+        )
     except ImportError:
-        from settings_manager import GHOSTS_DIR, SETTINGS_FILE, UPLOADS_DIR, get_settings_manager, list_voices, speak
+        from settings_manager import (
+            DEFAULT_ROLE_CONTEXTS,
+            GHOSTS_DIR,
+            SETTINGS_FILE,
+            UPLOADS_DIR,
+            get_settings_manager,
+            list_voices,
+            speak,
+        )
 
 APP_ROOT = Path(__file__).resolve().parent
 
@@ -26,6 +51,16 @@ app = Flask(
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
 settings_manager = get_settings_manager()
+
+
+def list_ghost_assets(folder: Path) -> list[str]:
+    return sorted(
+        [
+            p.name
+            for p in folder.iterdir()
+            if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".svg"}
+        ]
+    )
 
 
 @app.get("/settings")
@@ -40,14 +75,9 @@ def get_settings() -> Any:
         {
             "settings": settings,
             "voices": list_voices(),
-            "default_ghosts": sorted(
-                [
-                    p.name
-                    for p in GHOSTS_DIR.iterdir()
-                    if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".svg"}
-                ]
-            ),
+            "default_ghosts": list_ghost_assets(GHOSTS_DIR),
             "uploaded_ghosts": sorted([p.name for p in UPLOADS_DIR.glob("*.png")]),
+            "default_role_contexts": DEFAULT_ROLE_CONTEXTS,
         }
     )
 
@@ -75,12 +105,21 @@ def upload_ghost() -> Any:
     if not filename.lower().endswith(".png"):
         return jsonify({"error": "Only .png uploads are supported."}), 400
 
+    expression = str(request.form.get("expression", "happy")).lower().strip()
+    if expression not in {"happy", "nervous", "worried"}:
+        return jsonify({"error": "Invalid expression."}), 400
+
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     destination = UPLOADS_DIR / filename
     file.save(destination)
 
-    updated = settings_manager.set("model.ghost_image", filename)
-    return jsonify({"ok": True, "filename": filename, "settings": updated})
+    settings = settings_manager.get()
+    settings.setdefault("model", {}).setdefault("images", {})[expression] = filename
+    if expression == "happy":
+        settings["model"]["ghost_image"] = filename
+
+    updated = settings_manager.save_settings(settings)
+    return jsonify({"ok": True, "filename": filename, "expression": expression, "settings": updated})
 
 
 @app.post("/api/reset")
@@ -89,11 +128,23 @@ def reset_settings() -> Any:
     return jsonify({"ok": True, "settings": settings})
 
 
+@app.post("/api/reset-modules")
+def reset_modules() -> Any:
+    settings = settings_manager.get()
+    settings["modules"] = {
+        "consciousness": [],
+        "speech": {"voice": "default", "enabled": True},
+        "minecraft_mode": False,
+    }
+    settings["role_contexts"] = DEFAULT_ROLE_CONTEXTS
+    updated = settings_manager.save_settings(settings)
+    return jsonify({"ok": True, "settings": updated})
+
+
 @app.post("/api/delete-data")
 def delete_data() -> Any:
-    # Reset all memory-related values while preserving non-data settings.
     settings = settings_manager.get()
-    settings["memory"] = {"context_modules": []}
+    settings["memory"] = {"enabled": False, "context_modules": []}
     settings["data"] = {"stored": False}
     updated = settings_manager.save_settings(settings)
     return jsonify({"ok": True, "settings": updated})
@@ -108,6 +159,27 @@ def export_settings() -> Any:
         download_name="settings.json",
         mimetype="application/json",
     )
+
+
+@app.post("/api/import")
+def import_settings() -> Any:
+    if "file" not in request.files:
+        return jsonify({"error": "Missing file."}), 400
+
+    file = request.files["file"]
+    if not file or not file.filename:
+        return jsonify({"error": "No file selected."}), 400
+
+    try:
+        payload = json.loads(file.read().decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return jsonify({"error": "Invalid JSON file."}), 400
+
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Imported content must be a JSON object."}), 400
+
+    updated = settings_manager.save_settings(payload)
+    return jsonify({"ok": True, "settings": updated})
 
 
 @app.post("/api/test-voice")

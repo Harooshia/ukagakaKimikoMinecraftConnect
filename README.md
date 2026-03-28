@@ -2,9 +2,9 @@
 
 ## Local Settings Dashboard
 
-A local web settings system is now included.
+Kimiko now includes an AIRI-style local settings dashboard.
 
-### Run
+### Run web UI directly
 
 ```bash
 pip install -r requirements.txt
@@ -14,18 +14,17 @@ python -m webui.app
 
 Open: `http://localhost:5000/settings`
 
-### Features
+### Desktop auto-boot
 
-- Module settings (consciousness list, speech on/off + voice, minecraft mode)
-- Model ghost selector (text-based default SVG ghosts) + PNG upload
-- Memory context modules
-- Data actions: export, delete, reset
-- Settings are persisted to `settings.json` and used by `KimikoCore` at runtime.
+When running `Kimiko/kimiko_desktop.py`, the settings server auto-starts on:
+`http://127.0.0.1:5000/settings`
 
-### Runtime integration
+### Dashboard pages
 
-`Kimiko/kimiko_core.py` now reads shared settings from `webui/settings_manager.py` on each response.
-Minecraft mode, context modules, consciousness modules, and pyttsx3 voice output are applied dynamically.
+- Settings (hub)
+- Modules (Consciousness contexts, Speech, Minecraft)
+- Model (Happy/Nervous/Worried image mapping)
+- Memory (enable + context modules)
+- Data (export/import/delete/reset)
 
-
-Desktop app now auto-starts the settings server on http://127.0.0.1:5000/settings when Kimiko launches.
+All changes persist to `settings.json` and are consumed by `KimikoCore` at runtime.

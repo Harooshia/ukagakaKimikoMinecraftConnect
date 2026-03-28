@@ -1,79 +1,92 @@
 {% extends "base.html" %}
 {% block title %}Kimiko Settings{% endblock %}
 {% block content %}
-<header class="header">
-  <h1>Settings</h1>
-  <p>Local runtime controls for Kimiko (auto-saved to settings.json).</p>
+<header class="topbar">
+  <button id="backBtn" class="nav-back" hidden>← Settings</button>
+  <div>
+    <div class="top-subtitle">Settings</div>
+    <h1 id="pageTitle">Hub</h1>
+  </div>
 </header>
 
-<section class="stack">
-  <article class="card">
-    <h2>Modules</h2>
-    <div class="two-col">
-      <div>
-        <label>Consciousness modules (comma-separated)</label>
-        <input id="consciousnessInput" type="text" placeholder="reflection, planner" />
+<section id="page-hub" class="page active">
+  <div class="card-list">
+    <button class="nav-card" data-target="modules">
+      <div><h2>Modules</h2><p>Consciousness, speech, and minecraft behavior.</p></div><div class="icon">◈</div>
+    </button>
+    <button class="nav-card" data-target="model">
+      <div><h2>Model</h2><p>Ghost appearance and expression images.</p></div><div class="icon">◉</div>
+    </button>
+    <button class="nav-card" data-target="memory">
+      <div><h2>Memory</h2><p>Context modules and memory enablement.</p></div><div class="icon">◌</div>
+    </button>
+    <button class="nav-card" data-target="data">
+      <div><h2>Data</h2><p>Export, import, reset, and deletion controls.</p></div><div class="icon">◎</div>
+    </button>
+  </div>
+</section>
 
-        <div class="row between">
-          <span>Speech Enabled</span>
-          <label class="switch">
-            <input id="speechEnabled" type="checkbox" />
-            <span class="slider"></span>
-          </label>
-        </div>
+<section id="page-modules" class="page">
+  <div class="modules-grid">
+    <article class="setting-card">
+      <div class="setting-head"><h2>Consciousness</h2><p>Personality, behavior, context modules</p></div>
+      <label>Consciousness modules (comma-separated)</label>
+      <input id="consciousnessInput" type="text" placeholder="reflection, planner" />
+      <div id="contextList" class="context-list"></div>
+      <button id="addContextBtn" class="btn">+ Add Context</button>
+    </article>
 
-        <label>Speech Voice</label>
-        <select id="voiceSelect"></select>
-        <button id="testVoiceBtn" class="btn subtle">Test Voice</button>
-      </div>
+    <article class="setting-card">
+      <div class="setting-head"><h2>Speech</h2><p>Speech synthesis</p></div>
+      <div class="toggle-row"><span>Enabled</span><button id="speechEnabled" class="pill-toggle" aria-pressed="false"><span></span></button></div>
+      <label>Voice</label>
+      <select id="voiceSelect"></select>
+      <button id="testVoiceBtn" class="btn">Test Voice</button>
+    </article>
 
-      <div>
-        <div class="row between">
-          <span>Minecraft mode</span>
-          <label class="switch">
-            <input id="minecraftMode" type="checkbox" />
-            <span class="slider"></span>
-          </label>
-        </div>
+    <article class="setting-card">
+      <div class="setting-head"><h2>Minecraft</h2><p>Gameplay companion mode</p></div>
+      <div class="toggle-row"><span>Force Minecraft Context</span><button id="minecraftMode" class="pill-toggle" aria-pressed="false"><span></span></button></div>
+      <p class="hint">When enabled, active context is treated as minecraft.</p>
+    </article>
+  </div>
+</section>
 
-        <label>Context modules (comma-separated)</label>
-        <input id="memoryInput" type="text" placeholder="persona, timeline" />
-      </div>
+<section id="page-model" class="page">
+  <article class="setting-card">
+    <div class="setting-head"><h2>Ghost Appearance</h2><p>Happy, nervous, and worried expression mapping</p></div>
+    <div class="expression-grid">
+      <div class="expr-card"><h3>Happy</h3><img id="preview-happy" class="ghost-preview" alt="Happy" /><select class="expr-select" data-expression="happy"></select><input class="expr-upload" data-expression="happy" type="file" accept=".png" /></div>
+      <div class="expr-card"><h3>Nervous</h3><img id="preview-nervous" class="ghost-preview" alt="Nervous" /><select class="expr-select" data-expression="nervous"></select><input class="expr-upload" data-expression="nervous" type="file" accept=".png" /></div>
+      <div class="expr-card"><h3>Worried</h3><img id="preview-worried" class="ghost-preview" alt="Worried" /><select class="expr-select" data-expression="worried"></select><input class="expr-upload" data-expression="worried" type="file" accept=".png" /></div>
     </div>
   </article>
+</section>
 
-  <article class="card">
-    <h2>Model (Ghost)</h2>
-    <img id="ghostPreview" class="ghost-preview" alt="Current ghost" />
-    <div id="ghostGrid" class="ghost-grid"></div>
-    <label class="upload">
-      Upload PNG
-      <input id="ghostUpload" type="file" accept=".png" />
-    </label>
+<section id="page-memory" class="page">
+  <article class="setting-card">
+    <div class="setting-head"><h2>Memory</h2><p>Context modules and memory runtime behavior</p></div>
+    <div class="toggle-row"><span>Enable Memory</span><button id="memoryEnabled" class="pill-toggle" aria-pressed="false"><span></span></button></div>
+    <label>Context modules (comma-separated)</label>
+    <input id="memoryInput" type="text" placeholder="persona, timeline" />
   </article>
+</section>
 
-  <article class="card">
-    <h2>Role Contexts</h2>
-    <p>Edit the default mode prompts below. These are used by KimikoCore at runtime.</p>
-    <div class="role-grid">
-      <label>Work</label>
-      <textarea id="roleWork" rows="4"></textarea>
-      <label>Therapy</label>
-      <textarea id="roleTherapy" rows="6"></textarea>
-      <label>Companion</label>
-      <textarea id="roleCompanion" rows="4"></textarea>
-      <label>Minecraft</label>
-      <textarea id="roleMinecraft" rows="7"></textarea>
-    </div>
-    <button id="saveRolesBtn" class="btn">Save Role Contexts</button>
-  </article>
-
-  <article class="card">
-    <h2>Data</h2>
+<section id="page-data" class="page">
+  <article class="setting-card">
+    <div class="setting-head"><h2>Data</h2><p>Manage stored Kimiko settings and data.</p></div>
     <div class="actions">
-      <button id="exportBtn" class="btn">Export data</button>
-      <button id="deleteBtn" class="btn danger">Delete data</button>
-      <button id="resetBtn" class="btn danger">Reset settings</button>
+      <button id="exportBtn" class="btn">Export Data</button>
+      <label class="btn">Import Data<input id="importInput" type="file" accept="application/json" hidden /></label>
+      <button id="deleteBtn" class="btn">Delete Data</button>
+    </div>
+  </article>
+
+  <article class="setting-card danger-zone">
+    <div class="setting-head"><h2>Danger Zone</h2><p>Permanent/destructive actions.</p></div>
+    <div class="actions">
+      <button id="resetModulesBtn" class="btn danger">Reset Modules</button>
+      <button id="resetBtn" class="btn danger">Delete All Data / Reset</button>
     </div>
   </article>
 </section>
