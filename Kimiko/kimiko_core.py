@@ -337,6 +337,10 @@ class KimikoCore:
         convo.append({"role": "user", "content": user_input})
         convo.append({"role": "assistant", "content": reply})
         self.save_memory()
+        try:
+            speak(reply)
+        except Exception:
+            pass
         return reply
 
     # ---------- command processing ----------
