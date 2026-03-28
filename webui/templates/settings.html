@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="page-header">
+  <h1>Settings</h1>
+  <p>Choose a category to configure Kimiko.</p>
+</header>
+<div class="card-list">
+  <a class="setting-card nav-link" href="/settings/modules"><h2>Modules</h2><p>Consciousness, speech, minecraft.</p></a>
+  <a class="setting-card nav-link" href="/settings/model"><h2>Model</h2><p>Expression image mapping.</p></a>
+  <a class="setting-card nav-link" href="/settings/memory"><h2>Memory</h2><p>Runtime memory options.</p></a>
+  <a class="setting-card nav-link" href="/settings/data"><h2>Data</h2><p>Export, import, reset.</p></a>
+</div>
+{% endblock %}

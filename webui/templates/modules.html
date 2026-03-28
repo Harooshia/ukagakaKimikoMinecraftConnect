@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="page-header"><h1>Modules</h1><p>Configure consciousness, speech, and minecraft.</p></header>
+
+<div class="card-grid two-col">
+  <article class="setting-card">
+    <h2>Consciousness</h2>
+    <p>Editable context modules.</p>
+    <div id="contextList" class="context-list"></div>
+    <button id="addContextBtn" class="btn">+ Add Context</button>
+  </article>
+
+  <article class="setting-card">
+    <h2>Speech</h2>
+    <p>Speech synthesis settings.</p>
+    <div class="toggle-wrap">
+      <span>Speech Enabled</span>
+      <button id="speechEnabled" class="bar-toggle"><span></span></button>
+    </div>
+    <label>Voice</label>
+    <select id="voiceSelect"></select>
+    <button id="testVoiceBtn" class="btn">Test Voice</button>
+  </article>
+
+  <article class="setting-card">
+    <h2>Minecraft</h2>
+    <p>Force active context to minecraft mode.</p>
+    <div class="toggle-wrap">
+      <span>Minecraft Mode</span>
+      <button id="minecraftMode" class="bar-toggle"><span></span></button>
+    </div>
+  </article>
+</div>
+{% endblock %}

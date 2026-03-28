@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="page-header"><h1>Memory</h1><p>Manage memory behavior and visible contexts.</p></header>
+
+<article class="setting-card">
+  <div class="toggle-wrap">
+    <span>Enable Memory</span>
+    <button id="memoryEnabled" class="bar-toggle"><span></span></button>
+  </div>
+  <h2>Contexts</h2>
+  <p id="memoryContexts" class="block-text"></p>
+</article>
+{% endblock %}

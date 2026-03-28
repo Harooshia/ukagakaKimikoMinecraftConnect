@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kimiko Settings</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <main class="layout">
+      <nav class="stack-nav">
+        <a class="nav-item {% if page == 'settings' %}active{% endif %}" href="/settings">Settings</a>
+        <a class="nav-item {% if page == 'modules' %}active{% endif %}" href="/settings/modules">Modules</a>
+        <a class="nav-item {% if page == 'model' %}active{% endif %}" href="/settings/model">Model</a>
+        <a class="nav-item {% if page == 'memory' %}active{% endif %}" href="/settings/memory">Memory</a>
+        <a class="nav-item {% if page == 'data' %}active{% endif %}" href="/settings/data">Data</a>
+      </nav>
+      <section class="content">{% block content %}{% endblock %}</section>
+    </main>
+    <div id="toast" class="toast" aria-live="polite"></div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+  </body>
+</html>
