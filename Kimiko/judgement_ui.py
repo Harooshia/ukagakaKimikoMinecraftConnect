@@ -21,7 +21,6 @@ class JudgementWindow:
         self.on_close = on_close
         self.on_archive_select = on_archive_select
         self.always_on_top = tk.BooleanVar(value=True)
-        self.last_case_input = ""
         self._archive_case_ids: list[int] = []
 
         self.window = tk.Toplevel(parent)
@@ -145,9 +144,6 @@ class JudgementWindow:
         tk.Button(controls, text="CLEAR", command=self.clear, bg=THEME["warning"], fg="#251300", font=("Consolas", 10, "bold"), relief="flat").pack(
             side="left", padx=8, pady=8
         )
-        tk.Button(controls, text="REPROCESS", command=self.reprocess, bg=THEME["accent"], fg="#00190f", font=("Consolas", 10, "bold"), relief="flat").pack(
-            side="left", padx=8, pady=8
-        )
         tk.Button(controls, text="COPY RESULT", command=self.copy_result, bg=THEME["panel"], fg=THEME["text"], font=("Consolas", 10, "bold"), relief="solid").pack(
             side="left", padx=8, pady=8
         )
@@ -175,12 +171,7 @@ class JudgementWindow:
         if not content:
             self.set_status("STATUS: ACTIVE // INPUT REQUIRED", color=THEME["warning"])
             return
-        self.last_case_input = content
         self.on_process(content)
-
-    def reprocess(self) -> None:
-        if self.last_case_input:
-            self.on_process(self.last_case_input)
 
     def copy_result(self) -> None:
         result = self.get_output_text()

@@ -39,12 +39,15 @@ When switched to this context, Kimiko opens a separate floating window with a cl
    - Positive keywords: `+20`
    - Justification keywords: `+10`
    - Sentiment polarity (lexicon-based): `polarity * 6`
+   - Illegal-action signal: increases guilty score weight
+   - Necessity mitigation signal (e.g. self-defense/emergency): reduces legal culpability weight
 4. Verdict mapping:
    - `> 20` → **NOT GUILTY**
    - `-20 to 20` → **UNCLEAR**
    - `< -20` → **GUILTY**
 5. Structured AI analysis is then produced and rendered in a courtroom report panel.
 6. For very short but unethical prompts, an ethics override can apply an additional negative boost so harmful intent is still surfaced clearly.
+7. Legality checks now evaluate whether illegal conduct appears necessary (mitigated) or unnecessary (strongly guilty-leaning).
 
 ### Structured verdict output
 
@@ -68,7 +71,7 @@ The judgement panel renders:
   - `ANALYSING INTENT...`
   - `FINALISING VERDICT...`
 - Optional always-on-top toggle.
-- Reprocess / clear / copy result controls.
+- Clear / copy result controls.
 - Existing Kimiko features remain intact (memory, TTS if enabled, Minecraft mode, and web settings dashboard).
 
 ### Technical highlights

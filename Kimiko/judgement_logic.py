@@ -17,6 +17,14 @@ POSITIVE_KEYWORDS = {
 JUSTIFICATION_KEYWORDS = {
     "because", "had to", "forced", "self defense", "self-defence", "necessity", "emergency", "to protect",
 }
+ILLEGAL_KEYWORDS = {
+    "illegal", "crime", "criminal", "stole", "steal", "fraud", "forgery", "bribe", "bribery", "hack", "hacked",
+    "drug", "drugs", "smuggle", "smuggled", "kidnap", "murder", "assault", "arson", "extort", "theft",
+}
+NECESSITY_MITIGATION_KEYWORDS = {
+    "self defense", "self-defence", "to survive", "to save", "to protect", "medical emergency", "duress", "coerced",
+    "threatened", "immediate danger",
+}
 
 POSITIVE_SENTIMENT_WORDS = {
     "good", "kind", "safe", "fair", "helpful", "honest", "mercy", "care", "ethical", "responsible", "compassion",
@@ -71,14 +79,27 @@ def calculate_score(case_text: str) -> dict[str, object]:
     severe_hits = [keyword for keyword in SEVERE_HARM_KEYWORDS if keyword in lowered]
     positive_hits = [keyword for keyword in POSITIVE_KEYWORDS if keyword in lowered]
     justification_hits = [keyword for keyword in JUSTIFICATION_KEYWORDS if keyword in lowered]
+    illegal_hits = [keyword for keyword in ILLEGAL_KEYWORDS if keyword in lowered]
+    necessity_hits = [keyword for keyword in NECESSITY_MITIGATION_KEYWORDS if keyword in lowered]
 
     score = 0
     score += len(harm_hits) * -30
     score += len(severe_hits) * -50
     score += len(positive_hits) * 20
     score += len(justification_hits) * 10
+    score += len(illegal_hits) * -35
+    score += len(necessity_hits) * 20
     score += int(sentiment["polarity"]) * 6
     ethics_override_applied = False
+    legality_flag = "LEGALITY UNCLEAR"
+
+    if illegal_hits and not necessity_hits:
+        score -= 20
+        legality_flag = "ILLEGAL + UNNECESSARY"
+    elif illegal_hits and necessity_hits:
+        legality_flag = "ILLEGAL BUT CLAIMED NECESSARY"
+    elif not illegal_hits and necessity_hits:
+        legality_flag = "MITIGATED BY NECESSITY CONTEXT"
 
     unethical_signal = bool(harm_hits or severe_hits)
     very_short_input = len(tokens) <= 4
@@ -110,6 +131,9 @@ def calculate_score(case_text: str) -> dict[str, object]:
         "justification_hits": justification_hits,
         "sentiment": sentiment,
         "ethics_override_applied": ethics_override_applied,
+        "illegal_hits": illegal_hits,
+        "necessity_hits": necessity_hits,
+        "legality_flag": legality_flag,
     }
 
 
@@ -125,9 +149,11 @@ def evaluate_case(case_id: int, case_text: str, ai_callable: Callable[[str], str
         f"RULE VERDICT: {scoring['verdict']}\n"
         f"RULE SEVERITY: {scoring['severity']}\n\n"
         f"SENTIMENT: {scoring['sentiment']['label']} ({scoring['sentiment']['polarity']})\n"
+        f"LEGALITY ASSESSMENT: {scoring['legality_flag']}\n"
         f"ETHICS OVERRIDE APPLIED: {scoring['ethics_override_applied']}\n"
         f"KEYWORDS DETECTED: harm={scoring['harm_hits']}, severe={scoring['severe_hits']}, "
-        f"positive={scoring['positive_hits']}, justification={scoring['justification_hits']}\n\n"
+        f"positive={scoring['positive_hits']}, justification={scoring['justification_hits']}, "
+        f"illegal={scoring['illegal_hits']}, necessity={scoring['necessity_hits']}\n\n"
         "Respond in exactly three concise sections with clear labels:\n"
         "INTENT ANALYSIS: ...\n"
         "CONSEQUENCE ANALYSIS: ...\n"
@@ -159,6 +185,7 @@ def evaluate_case(case_id: int, case_text: str, ai_callable: Callable[[str], str
         "severity": str(scoring["severity"]),
         "sentiment_label": str(scoring["sentiment"]["label"]),
         "sentiment_polarity": int(scoring["sentiment"]["polarity"]),
+        "legality_flag": str(scoring["legality_flag"]),
         "ethics_override_applied": bool(scoring["ethics_override_applied"]),
         "intent_analysis": intent,
         "consequence_analysis": consequence,
@@ -175,6 +202,7 @@ def format_verdict_output(result: dict[str, str | int]) -> str:
         f"SEVERITY: {result['severity']}\n"
         f"SCORE: {result['score']}\n\n"
         f"SENTIMENT: {result['sentiment_label']} ({result['sentiment_polarity']})\n\n"
+        f"LEGALITY ASSESSMENT: {result['legality_flag']}\n\n"
         f"ETHICS OVERRIDE APPLIED: {result['ethics_override_applied']}\n\n"
         "INTENT ANALYSIS:\n"
         f"{result['intent_analysis']}\n\n"
