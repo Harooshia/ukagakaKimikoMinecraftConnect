@@ -22,9 +22,15 @@ if str(_REPO_ROOT) not in sys.path:
 
 try:
     from .kimiko_core import KimikoCore
+    from .judgement_logic import evaluate_case, format_verdict_output
+    from .judgement_memory import JudgementMemory
+    from .judgement_ui import create_judgement_window
     from .minecraft_connectai import MinecraftEventServer
 except ImportError:
     from kimiko_core import KimikoCore
+    from judgement_logic import evaluate_case, format_verdict_output
+    from judgement_memory import JudgementMemory
+    from judgement_ui import create_judgement_window
     from minecraft_connectai import MinecraftEventServer
 
 try:
@@ -116,9 +122,18 @@ class KimikoDesktopGhost:
         self.drag_start_pos = (0, 0)
 
         self.response_queue: queue.Queue[str] = queue.Queue()
+        self.judgement_queue: queue.Queue[dict[str, str | int]] = queue.Queue()
 
         self.settings_web_server = SettingsWebServer()
         self.settings_web_server.start()
+        self.judgement_memory = JudgementMemory()
+        self.judgement_window = create_judgement_window(
+            parent=self.root,
+            on_process=self._process_judgement_case,
+            on_close=self._on_judgement_window_closed,
+            on_archive_select=self._show_judgement_case_from_archive,
+        )
+        self.judgement_window.hide()
 
         self.minecraft_server_host = os.environ.get("KIMIKO_MINECRAFT_SERVER_HOST", "127.0.0.1")
         self.minecraft_server_port = int(os.environ.get("KIMIKO_MINECRAFT_SERVER_PORT", "5001"))
@@ -463,7 +478,51 @@ class KimikoDesktopGhost:
         self._register_activity()
         self.core.set_mode(mode)
         self._sync_minecraft_mode_runtime()
+        if mode == "judgement":
+            self.judgement_window.show()
+            self.judgement_window.set_status("STATUS: ACTIVE // VERDICT: PENDING", color="#ffaa00")
+        else:
+            self.judgement_window.hide()
         self._set_dialog_text(f"Mode changed to {mode}.")
+
+    def _on_judgement_window_closed(self) -> None:
+        if self.core.get_current_mode() == "judgement":
+            self._set_dialog_text("Judgement interface hidden. Switch back to Judgement mode to reopen.")
+
+    def _judgement_ai_call(self, prompt: str) -> str:
+        previous_mode = self.core.get_current_mode()
+        try:
+            if previous_mode != "judgement":
+                self.core.set_mode("judgement")
+            return self.core.send(prompt)
+        finally:
+            if previous_mode != "judgement":
+                self.core.set_mode(previous_mode)
+
+    def _run_judgement_case(self, case_id: int, case_input: str) -> None:
+        result = evaluate_case(case_id=case_id, case_text=case_input, ai_callable=self._judgement_ai_call)
+        self.judgement_queue.put(result)
+
+    def _show_judgement_case_from_archive(self, case_id: int) -> None:
+        record = self.judgement_memory.get_case(case_id)
+        if record is None:
+            return
+        self.judgement_window.set_case_id(record.case_id)
+        self.judgement_window.set_status(
+            f"STATUS: ARCHIVE REVIEW // VERDICT: {record.verdict} // SCORE: {record.score}",
+            color="#d3e6ff",
+        )
+        self.judgement_window.set_output(record.formatted_output, animate=False)
+
+    def _process_judgement_case(self, case_input: str) -> None:
+        self._register_activity()
+        case_id = self.judgement_memory.next_case_id()
+        self.judgement_window.set_case_id(case_id)
+        self.judgement_window.set_status("PROCESSING CASE...", color="#ffaa00")
+        self.judgement_window.set_output("PROCESSING CASE...\nANALYSING INTENT...\nFINALISING VERDICT...", animate=False)
+        self.root.after(450, lambda: self.judgement_window.set_status("ANALYSING INTENT...", color="#ffaa00"))
+        self.root.after(900, lambda: self.judgement_window.set_status("FINALISING VERDICT...", color="#ffaa00"))
+        threading.Thread(target=self._run_judgement_case, args=(case_id, case_input), daemon=True).start()
 
     def _reset_conversation(self) -> None:
         self._register_activity()
@@ -627,6 +686,25 @@ class KimikoDesktopGhost:
             self._set_dialog_text(reply)
             self._speak_async(reply)
             self.root.after(900, self._stop_talking)
+
+        while not self.judgement_queue.empty():
+            result = self.judgement_queue.get()
+            formatted_output = format_verdict_output(result)
+            self.judgement_memory.add_case(
+                case_id=int(result["case_id"]),
+                case_input=str(result["input"]),
+                verdict=str(result["verdict"]),
+                score=int(result["score"]),
+                formatted_output=formatted_output,
+            )
+            self.judgement_window.set_output(formatted_output, animate=True)
+            verdict = str(result["verdict"])
+            verdict_color = "#00ff9c" if verdict == "NOT GUILTY" else "#ff3b3b" if verdict == "GUILTY" else "#ffaa00"
+            self.judgement_window.set_status(f"STATUS: COMPLETE // VERDICT: {verdict}", color=verdict_color)
+            self.judgement_window.append_case_summary(
+                case_id=int(result["case_id"]),
+                summary=f"CASE {int(result['case_id']):03d} | {result['verdict']} | SCORE {result['score']}",
+            )
 
         if self.is_bubble_open:
             self.bubble.geometry(self.bubble_position())
