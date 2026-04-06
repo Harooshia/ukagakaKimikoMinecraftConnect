@@ -14,6 +14,7 @@ class CaseFile:
     case_input: str
     verdict: str
     score: int
+    formatted_output: str
     created_at: float
 
 
@@ -29,12 +30,20 @@ class JudgementMemory:
         self._next_case_id += 1
         return case_id
 
-    def add_case(self, case_id: int, case_input: str, verdict: str, score: int) -> CaseFile:
+    def add_case(
+        self,
+        case_id: int,
+        case_input: str,
+        verdict: str,
+        score: int,
+        formatted_output: str,
+    ) -> CaseFile:
         record = CaseFile(
             case_id=case_id,
             case_input=case_input,
             verdict=verdict,
             score=score,
+            formatted_output=formatted_output,
             created_at=time.time(),
         )
         self._cases.append(record)
@@ -42,6 +51,12 @@ class JudgementMemory:
 
     def list_cases(self) -> list[CaseFile]:
         return list(self._cases)
+
+    def get_case(self, case_id: int) -> CaseFile | None:
+        for record in self._cases:
+            if record.case_id == case_id:
+                return record
+        return None
 
     def clear(self) -> None:
         self._cases.clear()

@@ -15,12 +15,14 @@ THEME = {
 
 
 class JudgementWindow:
-    def __init__(self, parent: tk.Tk, on_process, on_close) -> None:
+    def __init__(self, parent: tk.Tk, on_process, on_close, on_archive_select=None) -> None:
         self.parent = parent
         self.on_process = on_process
         self.on_close = on_close
+        self.on_archive_select = on_archive_select
         self.always_on_top = tk.BooleanVar(value=True)
         self.last_case_input = ""
+        self._archive_case_ids: list[int] = []
 
         self.window = tk.Toplevel(parent)
         self.window.title("JUDGEMENT SYSTEM")
@@ -135,6 +137,7 @@ class JudgementWindow:
             font=("Consolas", 9),
         )
         self.case_list.grid(row=1, column=1, sticky="nsew", padx=(8, 0))
+        self.case_list.bind("<<ListboxSelect>>", self._handle_archive_select)
 
         controls = tk.Frame(root, bg=THEME["panel"], bd=1, relief="solid")
         controls.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 10))
@@ -199,8 +202,20 @@ class JudgementWindow:
     def set_status(self, text: str, color: str | None = None) -> None:
         self.status_label.configure(text=text, fg=color or THEME["warning"])
 
-    def append_case_summary(self, summary: str) -> None:
+    def append_case_summary(self, case_id: int, summary: str) -> None:
         self.case_list.insert("end", summary)
+        self._archive_case_ids.append(case_id)
+
+    def _handle_archive_select(self, _event=None) -> None:
+        if not self.on_archive_select:
+            return
+        selected = self.case_list.curselection()
+        if not selected:
+            return
+        idx = selected[0]
+        if idx < 0 or idx >= len(self._archive_case_ids):
+            return
+        self.on_archive_select(self._archive_case_ids[idx])
 
     def set_output(self, message: str, animate: bool = True) -> None:
         self.output_box.configure(state="normal")
@@ -244,7 +259,12 @@ class JudgementWindow:
         self.window.withdraw()
 
 
-def create_judgement_window(parent: tk.Tk, on_process, on_close) -> JudgementWindow:
+def create_judgement_window(parent: tk.Tk, on_process, on_close, on_archive_select=None) -> JudgementWindow:
     """Factory for the judgement system floating window."""
 
-    return JudgementWindow(parent=parent, on_process=on_process, on_close=on_close)
+    return JudgementWindow(
+        parent=parent,
+        on_process=on_process,
+        on_close=on_close,
+        on_archive_select=on_archive_select,
+    )

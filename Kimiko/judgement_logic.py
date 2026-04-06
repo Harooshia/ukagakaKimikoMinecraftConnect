@@ -64,6 +64,7 @@ def calculate_score(case_text: str) -> dict[str, object]:
     """Calculate score from keyword categories and sentiment signal."""
 
     lowered = (case_text or "").lower()
+    tokens = _tokenize(case_text)
     sentiment = analyze_sentiment(case_text)
 
     harm_hits = [keyword for keyword in HARM_KEYWORDS if keyword in lowered]
@@ -77,6 +78,13 @@ def calculate_score(case_text: str) -> dict[str, object]:
     score += len(positive_hits) * 20
     score += len(justification_hits) * 10
     score += int(sentiment["polarity"]) * 6
+    ethics_override_applied = False
+
+    unethical_signal = bool(harm_hits or severe_hits)
+    very_short_input = len(tokens) <= 4
+    if very_short_input and unethical_signal and -20 <= score <= 20:
+        score -= 25
+        ethics_override_applied = True
 
     if score > 20:
         verdict = "NOT GUILTY"
@@ -101,6 +109,7 @@ def calculate_score(case_text: str) -> dict[str, object]:
         "positive_hits": positive_hits,
         "justification_hits": justification_hits,
         "sentiment": sentiment,
+        "ethics_override_applied": ethics_override_applied,
     }
 
 
@@ -116,6 +125,7 @@ def evaluate_case(case_id: int, case_text: str, ai_callable: Callable[[str], str
         f"RULE VERDICT: {scoring['verdict']}\n"
         f"RULE SEVERITY: {scoring['severity']}\n\n"
         f"SENTIMENT: {scoring['sentiment']['label']} ({scoring['sentiment']['polarity']})\n"
+        f"ETHICS OVERRIDE APPLIED: {scoring['ethics_override_applied']}\n"
         f"KEYWORDS DETECTED: harm={scoring['harm_hits']}, severe={scoring['severe_hits']}, "
         f"positive={scoring['positive_hits']}, justification={scoring['justification_hits']}\n\n"
         "Respond in exactly three concise sections with clear labels:\n"
@@ -149,6 +159,7 @@ def evaluate_case(case_id: int, case_text: str, ai_callable: Callable[[str], str
         "severity": str(scoring["severity"]),
         "sentiment_label": str(scoring["sentiment"]["label"]),
         "sentiment_polarity": int(scoring["sentiment"]["polarity"]),
+        "ethics_override_applied": bool(scoring["ethics_override_applied"]),
         "intent_analysis": intent,
         "consequence_analysis": consequence,
         "final_reasoning": final_reasoning,
@@ -164,6 +175,7 @@ def format_verdict_output(result: dict[str, str | int]) -> str:
         f"SEVERITY: {result['severity']}\n"
         f"SCORE: {result['score']}\n\n"
         f"SENTIMENT: {result['sentiment_label']} ({result['sentiment_polarity']})\n\n"
+        f"ETHICS OVERRIDE APPLIED: {result['ethics_override_applied']}\n\n"
         "INTENT ANALYSIS:\n"
         f"{result['intent_analysis']}\n\n"
         "CONSEQUENCE ANALYSIS:\n"

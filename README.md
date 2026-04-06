@@ -44,6 +44,7 @@ When switched to this context, Kimiko opens a separate floating window with a cl
    - `-20 to 20` → **UNCLEAR**
    - `< -20` → **GUILTY**
 5. Structured AI analysis is then produced and rendered in a courtroom report panel.
+6. For very short but unethical prompts, an ethics override can apply an additional negative boost so harmful intent is still surfaced clearly.
 
 ### Structured verdict output
 
@@ -61,6 +62,7 @@ The judgement panel renders:
 - Context switching with mode menu integration.
 - Independent desktop floating judgement window.
 - Case archive list for previous verdicts.
+- Clicking archive entries reloads that full case report from memory (including score) into the main verdict panel.
 - Processing-state feedback:
   - `PROCESSING CASE...`
   - `ANALYSING INTENT...`

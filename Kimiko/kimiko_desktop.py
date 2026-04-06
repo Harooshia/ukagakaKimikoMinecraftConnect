@@ -131,6 +131,7 @@ class KimikoDesktopGhost:
             parent=self.root,
             on_process=self._process_judgement_case,
             on_close=self._on_judgement_window_closed,
+            on_archive_select=self._show_judgement_case_from_archive,
         )
         self.judgement_window.hide()
 
@@ -502,6 +503,17 @@ class KimikoDesktopGhost:
         result = evaluate_case(case_id=case_id, case_text=case_input, ai_callable=self._judgement_ai_call)
         self.judgement_queue.put(result)
 
+    def _show_judgement_case_from_archive(self, case_id: int) -> None:
+        record = self.judgement_memory.get_case(case_id)
+        if record is None:
+            return
+        self.judgement_window.set_case_id(record.case_id)
+        self.judgement_window.set_status(
+            f"STATUS: ARCHIVE REVIEW // VERDICT: {record.verdict} // SCORE: {record.score}",
+            color="#d3e6ff",
+        )
+        self.judgement_window.set_output(record.formatted_output, animate=False)
+
     def _process_judgement_case(self, case_input: str) -> None:
         self._register_activity()
         case_id = self.judgement_memory.next_case_id()
@@ -677,18 +689,21 @@ class KimikoDesktopGhost:
 
         while not self.judgement_queue.empty():
             result = self.judgement_queue.get()
+            formatted_output = format_verdict_output(result)
             self.judgement_memory.add_case(
                 case_id=int(result["case_id"]),
                 case_input=str(result["input"]),
                 verdict=str(result["verdict"]),
                 score=int(result["score"]),
+                formatted_output=formatted_output,
             )
-            self.judgement_window.set_output(format_verdict_output(result), animate=True)
+            self.judgement_window.set_output(formatted_output, animate=True)
             verdict = str(result["verdict"])
             verdict_color = "#00ff9c" if verdict == "NOT GUILTY" else "#ff3b3b" if verdict == "GUILTY" else "#ffaa00"
             self.judgement_window.set_status(f"STATUS: COMPLETE // VERDICT: {verdict}", color=verdict_color)
             self.judgement_window.append_case_summary(
-                f"CASE {int(result['case_id']):03d} | {result['verdict']} | SCORE {result['score']}"
+                case_id=int(result["case_id"]),
+                summary=f"CASE {int(result['case_id']):03d} | {result['verdict']} | SCORE {result['score']}",
             )
 
         if self.is_bubble_open:
